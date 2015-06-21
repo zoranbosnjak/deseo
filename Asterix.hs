@@ -6,36 +6,68 @@ Author: Zoran Bosnjak (Sloveniacontrol)
 
 -}
 
+import Data.Monoid
+
 import qualified Data.ByteString as S
 import qualified Data.Map as Map
 
 import qualified Bits as B
 
-data Length = Length1 Int | Length2 Int Int
+type Name = String
 
-data Convert
+data Tip = TItem
+           | TFixed
+           | TSpare
+           | TExtended
+           | TRepetitive
+           | TExplicit
+           | TCompound
+           | TRfs
 
-data Desc = Desc {  name :: String
-                    , dsc   :: Maybe String
-                    , len   :: Maybe Length
-                    , items :: Maybe [Desc]
-                    , convert :: Maybe Convert
+data Length = Length0 | Length1 Int | Length2 Int Int
+
+data Desc = Desc {  name    :: String
+                    , tip   :: Tip
+                    , dsc   :: String
+                    , len   :: Length
+                    , items :: [Desc]
+
+                    -- convert functions
+                    , toInt :: Maybe (B.Bits -> Int)
+                    , fromInt :: Maybe (Int -> B.Bits)
+                    , toFloat :: Maybe (B.Bits -> Float)
+                    , fromFloat :: Maybe (Float -> B.Bits)
                  }
 
-data Item = Raw B.Bits
-            | Item Desc [Item]
-            | Fixed Desc B.Bits
-            | Spare Desc
-            | Extended Desc [Item]
-            | Repetitive Desc [Item]
-            | Explicit Desc
-            | Compound Desc [Item]
+data Item = Item [(Name,Item)]
+            | Fixed B.Bits
+            | Spare Int
+            | Extended [(Name,Item)]
+            | Repetitive [Item]
+            | Explicit B.Bits
+            | Compound [(Name, Maybe Item)]
             -- | Rfs 
 
-encode :: Item -> B.Bits
-encode = undefined
-    
 itemLength = B.length . encode
+
+-- encode items
+encode :: Item -> B.Bits
+encode (Item xs) = mconcat . map (\(_,item) -> encode item) $ xs
+encode (Fixed b) = b
+encode (Spare n) = B.toBits $ replicate n False
+encode _ = undefined
+
+-- decode items
+decode :: Desc -> B.Bits -> Maybe Item
+
+decode Desc {tip=TItem, items=items} b = undefined
+
+decode Desc {tip=TFixed, len=Length1 n} b
+    | B.length b > n = Just $ Fixed (B.takeBits n b)
+    | B.length b == n = Just $ Fixed b
+    | otherwise = Nothing
+
+decode Desc {tip=TSpare, len=Length1 n} b = undefined
 
 main = do
 

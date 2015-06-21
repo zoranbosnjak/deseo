@@ -9,6 +9,8 @@ Author: Zoran Bosnjak (Sloveniacontrol)
 module Bits
 ( Bits
   , length
+  , takeBits
+  , toBits
 ) where
 
 import Prelude hiding (length)
@@ -31,10 +33,20 @@ toStartOf val@(Bytes x) = (x, (length val))
 toStartOf (StartOf x n) = (x, n)
 toStartOf (Slice x a b) = undefined
 
+-- take first n bits
+takeBits :: Int -> Bits -> Bits
+takeBits = undefined
+
 instance Monoid Bits where
     mempty = Bytes S.empty
 
     mappend (Bytes a) (Bytes b) = Bytes (a `mappend` b)
     mappend b1@(Bytes a) b2@(Slice b x y) = undefined
     mappend b1 b2 = undefined
+
+toBits :: [Bool] -> Bits
+toBits list = undefined
+
+toList :: Bits -> [Bool]
+toList bits = undefined
 
