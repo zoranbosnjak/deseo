@@ -13,7 +13,14 @@ import qualified Data.Map as Map
 
 import qualified Bits as B
 
+import qualified Data.ByteString as S
+
 type Name = String
+type Size = Int
+
+type Datagram = B.Bits
+type Datablock = B.Bits
+type Record = B.Bits
 
 data Tip = TItem
            | TFixed
@@ -39,6 +46,18 @@ data Desc = Desc {  name    :: String
                     , fromFloat :: Maybe (Float -> B.Bits)
                  }
 
+noDesc = Desc {
+    name = ""
+    , tip = TItem
+    , dsc = ""
+    , len = Length0
+    , items = []
+    , toInt = Nothing
+    , fromInt = Nothing
+    , toFloat = Nothing
+    , fromFloat = Nothing
+}
+
 data Item = Item [(Name,Item)]
             | Fixed B.Bits
             | Spare Int
@@ -54,22 +73,72 @@ itemLength = B.length . encode
 encode :: Item -> B.Bits
 encode (Item xs) = mconcat . map (\(_,item) -> encode item) $ xs
 encode (Fixed b) = b
-encode (Spare n) = B.toBits $ replicate n False
 encode _ = undefined
 
 -- decode items
-decode :: Desc -> B.Bits -> Maybe Item
 
-decode Desc {tip=TItem, items=items} b = undefined
+checkSize :: Int -> B.Bits -> Maybe Int
+checkSize n b
+    | B.length b < n = Nothing
+    | otherwise = Just n
 
-decode Desc {tip=TFixed, len=Length1 n} b
-    | B.length b > n = Just $ Fixed (B.takeBits n b)
-    | B.length b == n = Just $ Fixed b
-    | otherwise = Nothing
+-- sizeOf
+sizeOf :: Desc -> B.Bits -> Maybe Size
 
-decode Desc {tip=TSpare, len=Length1 n} b = undefined
+-- sizeOf TItem
+sizeOf Desc {tip=TItem, len=Length1 n} b = checkSize n b
+sizeOf Desc {tip=TItem, items=[]} _ = Just 0
+sizeOf d@Desc {tip=TItem, items=(i:is)} b = do
+    x <- sizeOf i b
+    y <- sizeOf (d {items=is}) (B.drop x b)
+    Just (x+y)
+
+-- sizeOf TFixed
+sizeOf Desc {tip=TFixed, len=Length1 n} b = checkSize n b
+
+-- sizeOf TSpare
+sizeOf Desc {tip=TSpare, len=Length1 n} b = do
+    size <- checkSize n b
+    if (B.take size b) == (B.zeros size) then Just size
+    else Nothing
+
+-- sizeOf TExtended
+sizeOf d@Desc {tip=TExtended, len=Length2 n1 n2} b = do
+    next <- checkSize n1 b
+    if (B.index b (next-1)) then dig next
+    else Just n1
+        where
+            dig offset = do 
+                next <- checkSize offset b
+                if (B.index b (next-1)) then dig (next+n2)
+                else Just next
 
 main = do
+
+    let x = B.Bytes $ S.pack [0,0,3,4]
+        y = B.Bytes $ S.pack [1,0,3,4]
+        d1 = noDesc {tip=TFixed, len=Length1 8}
+        d1a = noDesc {tip=TFixed, len=Length1 80}
+        d2 = noDesc {tip=TSpare, len=Length1 16}
+        d2a = noDesc {tip=TSpare, len=Length1 80}
+
+        d3 = noDesc {tip=TItem, len=Length1 16}
+        d3a = noDesc {tip=TItem, items=[d1,d1]}
+
+        d4 = noDesc {tip=TExtended, len=Length2 8 8}
+
+    putStrLn . show . sizeOf d1 $ x
+    putStrLn . show . sizeOf d1a $ x
+    putStrLn . show . sizeOf d2 $ x
+    putStrLn . show . sizeOf d2a $ x
+
+    putStrLn "---"
+    putStrLn . show . sizeOf d3 $ x
+    putStrLn . show . sizeOf d3a $ x
+
+    putStrLn "---"
+    putStrLn . show . sizeOf d4 $ x
+    putStrLn . show . sizeOf d4 $ y
 
     {-
     rec <- do
