@@ -113,6 +113,13 @@ sizeOf d@Desc {tip=TExtended, len=Length2 n1 n2} b = do
                 if (B.index b (next-1)) then dig (next+n2)
                 else Just next
 
+-- sizeOf TRepetitive
+sizeOf Desc {tip=TRepetitive, len=Length1 n} b = do
+    next <- checkSize 8 b
+    let val = B.toUnsigned . B.take next $ b
+    checkSize (8+val*n) b
+sizeOf Desc {tip=TRepetitive, items=items} b = undefined
+
 main = do
 
     let x = B.Bytes $ S.pack [0,0,3,4]
@@ -127,6 +134,8 @@ main = do
 
         d4 = noDesc {tip=TExtended, len=Length2 8 8}
 
+        d5 = noDesc {tip=TRepetitive, len=Length1 24}
+
     putStrLn . show . sizeOf d1 $ x
     putStrLn . show . sizeOf d1a $ x
     putStrLn . show . sizeOf d2 $ x
@@ -139,6 +148,10 @@ main = do
     putStrLn "---"
     putStrLn . show . sizeOf d4 $ x
     putStrLn . show . sizeOf d4 $ y
+
+    putStrLn "---"
+    putStrLn . show . sizeOf d5 $ x
+    putStrLn . show . sizeOf d5 $ y
 
     {-
     rec <- do

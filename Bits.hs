@@ -13,6 +13,7 @@ module Bits
   , drop
   , zeros
   , index
+  , toUnsigned
   , pack
   , unpack
 ) where
@@ -47,13 +48,46 @@ instance Monoid Bits where
     mappend b1@(Bytes a) b2@(Slice b x y) = undefined
     mappend b1 b2 = undefined
 
--- shift bits, return (bytestring, remainder, size)
-strip :: Bits -> (S.ByteString, Word8, Int)
-strip bs@(Bytes x) = (x, 0, length bs)
-strip bs@(Slice x a b) = undefined
+-- shift ByteString by number of bits
+shiftByteStringR :: Int -> S.ByteString -> [Word8]
+shiftByteStringR n b 
+    | n < 0 = error "expect positive shift"
+    | otherwise = 
+        adjust . rotate . shift1 $ b where
+        (byteShift, bitShift) = divMod n 8
+        shift1 = S.take (S.length b - byteShift)
+        rotate = S.map (flip B.rotateR $ bitShift)
+        m1 = B.shiftR (0xff :: Word8) bitShift -- mask1
+        m2 = B.complement m1            -- mask2
+        v1 = S.map (m1 B..&.)
+        v2 = S.cons 0 . S.init . S.map (m2 B..&.)
+        adjust x = S.zipWith (B..|.) (v1 x) (v2 x)
+
+bytesRequired numOfBits = a + if b==0 then 0 else 1 where (a,b) = divMod numOfBits 8
+
+-- convert to compact form
+toMinList :: Bits -> [Word8]
+toMinList (Bytes x) = S.unpack x
+toMinList (Slice x a b) = mask . reduce2 . shiftByteStringR n . reduce1 $ x where
+    total = b-a
+    n = ((8 - (b `mod` 8)) `mod` 8) -- required shift
+    reduce1 = S.take (i2-i1) . S.drop i1 -- shorter bytestring stage 1
+    i1 = a `div` 8
+    i2 = bytesRequired b -- second word8 index
+    reduce2 y = P.drop ((P.length y) - (bytesRequired total)) y
+    mask [] = []
+    mask (x:xs) = ((B..&.) mask1 x):xs
+    mask1 = B.complement $ B.shiftL 0xff (total `mod` 8)
+
+-- convert bits to unsigned integer
+toUnsigned :: Num a => Bits -> a
+toUnsigned bs = let words = reverse . map P.fromIntegral . toMinList $ bs
+                    factors = map (256^) [0..]
+                    elements = zipWith (*) words factors
+                in foldr (+) 0 elements
 
 instance Eq Bits where
-    a == b = (strip a) == (strip b)
+    a == b = (length a == length b) && (toMinList a == toMinList b)
 
 -- calculate bits length
 length :: Bits -> Int
