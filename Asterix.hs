@@ -29,7 +29,7 @@ data Tip = TItem
            | TRepetitive
            | TExplicit
            | TCompound
-           | TRfs
+           -- | TRfs
 
 data Length = Length0 | Length1 Int | Length2 Int Int
 
@@ -120,10 +120,46 @@ sizeOf Desc {tip=TRepetitive, len=Length1 n} b = do
     checkSize (8+val*n) b
 sizeOf Desc {tip=TRepetitive, items=items} b = undefined
 
+-- sizeOf TExplicit
+sizeOf Desc {tip=TExplicit} b = do
+    next <- checkSize 8 b
+    let val = B.toUnsigned . B.take next $ b
+    case val of
+        0 -> Nothing
+        otherwise -> checkSize (8*val) b
+
+-- sizeOf TCompound
+sizeOf Desc {tip=TCompound, items=items} b' = do
+    b <- B.checkAligned b'
+    (fspec, fspecTotal) <- getFspec b'
+    -- TODO: check length of items (must be >= length of fspec)
+    let subitems = map snd . filter (\(flag,item) -> flag) $ zip fspec items
+    sub <- dig subitems (B.drop (length fspec) b)
+    Just ((length fspecTotal) + sub) where
+
+        getFspec :: B.Bits -> Maybe ([Bool],[Bool])
+        getFspec b = do
+            n <- checkSize 8 b
+            let val = B.unpack . B.take n $ b
+            if (last val == False) then Just ((init val), val)
+            else do
+                (rem, remTotal) <- getFspec (B.drop n b)
+                let rv = (init val) ++ rem
+                    rvTotal = val ++ remTotal
+                Just (rv, rvTotal)
+
+        dig :: [Desc] -> B.Bits -> Maybe Size
+        dig [] _ = Just 0
+        dig (i:is) b = do
+            s <- sizeOf i b
+            rest <- dig is (B.drop s b)
+            Just (s + rest)
+
 main = do
 
     let x = B.Bytes $ S.pack [0,0,3,4]
         y = B.Bytes $ S.pack [1,0,3,4]
+        z = B.Bytes $ S.pack [2,0,3,4]
         d1 = noDesc {tip=TFixed, len=Length1 8}
         d1a = noDesc {tip=TFixed, len=Length1 80}
         d2 = noDesc {tip=TSpare, len=Length1 16}
@@ -135,6 +171,10 @@ main = do
         d4 = noDesc {tip=TExtended, len=Length2 8 8}
 
         d5 = noDesc {tip=TRepetitive, len=Length1 24}
+
+        d6 = noDesc {tip=TExplicit}
+
+        d7 = noDesc {tip=TCompound, items=[d1,d1,d1,d1,d1,d1,d1,d1]}
 
     putStrLn . show . sizeOf d1 $ x
     putStrLn . show . sizeOf d1a $ x
@@ -152,6 +192,13 @@ main = do
     putStrLn "---"
     putStrLn . show . sizeOf d5 $ x
     putStrLn . show . sizeOf d5 $ y
+
+    putStrLn "---"
+    putStrLn . show . sizeOf d6 $ x
+    putStrLn . show . sizeOf d6 $ y
+
+    putStrLn "---"
+    putStrLn . show . sizeOf d7 $ z
 
     {-
     rec <- do

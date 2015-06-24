@@ -16,6 +16,7 @@ module Bits
   , toUnsigned
   , pack
   , unpack
+  , checkAligned
 ) where
 
 import qualified Prelude as P
@@ -132,4 +133,11 @@ pack = undefined
 
 unpack :: Bits -> [Bool]
 unpack b = [index b i | i<-[0..(length b)-1]]
+
+-- is byte aligned
+checkAligned :: Bits -> Maybe Bits
+checkAligned bs@(Bytes x) = Just bs
+checkAligned bs@(Slice x a b)
+    | (a `mod` 8) == 0 = Just bs
+    | otherwise = Nothing
 
