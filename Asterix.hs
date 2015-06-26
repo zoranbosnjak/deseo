@@ -6,15 +6,26 @@ Author: Zoran Bosnjak (Sloveniacontrol)
 
 -}
 
+module Asterix
+(   Tip(..)
+    , Desc(..)
+    , sizeOf
+    , getCategoryDescription
+) where
+
+import Data.Maybe (fromJust, fromMaybe, isJust)
 import Data.Monoid
 
 import qualified Data.ByteString as S
 import qualified Data.Map as Map
 
-import qualified Bits as B
-
+import Text.XML.Light
 import qualified Data.ByteString as S
 
+import qualified Bits as B
+
+type Category = Int
+type Edition = Float
 type Name = String
 type Size = Int
 
@@ -30,32 +41,33 @@ data Tip = TItem
            | TExplicit
            | TCompound
            -- | TRfs
+           deriving (Show, Read)
 
-data Length = Length0 | Length1 Int | Length2 Int Int
+data Length = Length0 | Length1 Int | Length2 Int Int deriving (Show, Read)
 
-data Desc = Desc {  name    :: String
-                    , tip   :: Tip
-                    , dsc   :: String
-                    , len   :: Length
-                    , items :: [Desc]
+data Desc = Desc {  dName       :: String
+                    , dTip      :: Tip
+                    , dDsc      :: String
+                    , dLen      :: Length
+                    , dItems    :: [Desc]
 
                     -- convert functions
-                    , toInt :: Maybe (B.Bits -> Int)
-                    , fromInt :: Maybe (Int -> B.Bits)
-                    , toFloat :: Maybe (B.Bits -> Float)
-                    , fromFloat :: Maybe (Float -> B.Bits)
+                    , dToInt    :: Maybe (B.Bits -> Int)
+                    , dFromInt  :: Maybe (Int -> B.Bits)
+                    , dToFloat  :: Maybe (B.Bits -> Float)
+                    , dFromFloat :: Maybe (Float -> B.Bits)
                  }
 
 noDesc = Desc {
-    name = ""
-    , tip = TItem
-    , dsc = ""
-    , len = Length0
-    , items = []
-    , toInt = Nothing
-    , fromInt = Nothing
-    , toFloat = Nothing
-    , fromFloat = Nothing
+    dName = ""
+    , dTip = TItem
+    , dDsc = ""
+    , dLen = Length0
+    , dItems = []
+    , dToInt = Nothing
+    , dFromInt = Nothing
+    , dToFloat = Nothing
+    , dFromFloat = Nothing
 }
 
 data Item = Item [(Name,Item)]
@@ -86,24 +98,24 @@ checkSize n b
 sizeOf :: Desc -> B.Bits -> Maybe Size
 
 -- sizeOf TItem
-sizeOf Desc {tip=TItem, len=Length1 n} b = checkSize n b
-sizeOf Desc {tip=TItem, items=[]} _ = Just 0
-sizeOf d@Desc {tip=TItem, items=(i:is)} b = do
+sizeOf Desc {dTip=TItem, dLen=Length1 n} b = checkSize n b
+sizeOf Desc {dTip=TItem, dItems=[]} _ = Just 0
+sizeOf d@Desc {dTip=TItem, dItems=(i:is)} b = do
     x <- sizeOf i b
-    y <- sizeOf (d {items=is}) (B.drop x b)
+    y <- sizeOf (d {dItems=is}) (B.drop x b)
     Just (x+y)
 
 -- sizeOf TFixed
-sizeOf Desc {tip=TFixed, len=Length1 n} b = checkSize n b
+sizeOf Desc {dTip=TFixed, dLen=Length1 n} b = checkSize n b
 
 -- sizeOf TSpare
-sizeOf Desc {tip=TSpare, len=Length1 n} b = do
+sizeOf Desc {dTip=TSpare, dLen=Length1 n} b = do
     size <- checkSize n b
     if (B.take size b) == (B.zeros size) then Just size
     else Nothing
 
 -- sizeOf TExtended
-sizeOf d@Desc {tip=TExtended, len=Length2 n1 n2} b = do
+sizeOf d@Desc {dTip=TExtended, dLen=Length2 n1 n2} b = do
     next <- checkSize n1 b
     if (B.index b (next-1)) then dig next
     else Just n1
@@ -114,14 +126,14 @@ sizeOf d@Desc {tip=TExtended, len=Length2 n1 n2} b = do
                 else Just next
 
 -- sizeOf TRepetitive
-sizeOf Desc {tip=TRepetitive, len=Length1 n} b = do
+sizeOf Desc {dTip=TRepetitive, dLen=Length1 n} b = do
     next <- checkSize 8 b
     let val = B.toUnsigned . B.take next $ b
     checkSize (8+val*n) b
-sizeOf Desc {tip=TRepetitive, items=items} b = undefined
+sizeOf Desc {dTip=TRepetitive, dItems=items} b = undefined
 
 -- sizeOf TExplicit
-sizeOf Desc {tip=TExplicit} b = do
+sizeOf Desc {dTip=TExplicit} b = do
     next <- checkSize 8 b
     let val = B.toUnsigned . B.take next $ b
     case val of
@@ -129,7 +141,7 @@ sizeOf Desc {tip=TExplicit} b = do
         otherwise -> checkSize (8*val) b
 
 -- sizeOf TCompound
-sizeOf Desc {tip=TCompound, items=items} b' = do
+sizeOf Desc {dTip=TCompound, dItems=items} b' = do
     b <- B.checkAligned b'
     (fspec, fspecTotal) <- getFspec b'
     -- TODO: check length of items (must be >= length of fspec)
@@ -155,57 +167,71 @@ sizeOf Desc {tip=TCompound, items=items} b' = do
             rest <- dig is (B.drop s b)
             Just (s + rest)
 
-main = do
+-- read xml (may fail in case of errors in xml)
+getCategoryDescription :: String -> (Category, Edition, Desc)
+getCategoryDescription s = (cat, ed, dsc) where
+    name s = blank_name {qName=s}
+    elements = onlyElems . parseXML $ s
+    category = head . filter (\e -> (qName . elName $ e) == "category") $ elements
+    cat = getAttr category "cat"
+    ed = getAttr category "edition"
+    items = map readItem . elChildren . fromJust . getChild category $ "items"
+    dsc = head . tail $ items -- TODO: fix this
+    -- dsc = head . tail . tail . tail . tail . tail $ items -- TODO: fix this
 
-    let x = B.Bytes $ S.pack [0,0,3,4]
-        y = B.Bytes $ S.pack [1,0,3,4]
-        z = B.Bytes $ S.pack [2,0,3,4]
-        d1 = noDesc {tip=TFixed, len=Length1 8}
-        d1a = noDesc {tip=TFixed, len=Length1 80}
-        d2 = noDesc {tip=TSpare, len=Length1 16}
-        d2a = noDesc {tip=TSpare, len=Length1 80}
+    getAttr el aName = read . fromJust . findAttr (name aName) $ el
+    getChild el aName = findChild (name aName) $ el
 
-        d3 = noDesc {tip=TItem, len=Length1 16}
-        d3a = noDesc {tip=TItem, items=[d1,d1]}
+    readLength :: String -> Length
+    readLength s
+        | s == "" = Length0
+        | isJust (maybeRead s :: Maybe Size) = Length1 . read $ s
+        | isJust (maybeRead s :: Maybe (Size,Size)) = Length2 a b
+        where
+            (a,b) = read s
+            maybeRead s = case reads s of
+                [(x, "")] -> Just x
+                _         -> Nothing
 
-        d4 = noDesc {tip=TExtended, len=Length2 8 8}
+    recalculateLen :: Desc -> Length
+    recalculateLen dsc = fromMaybe Length0 (total dsc >>= Just . Length1) where
+        total :: Desc -> Maybe Size
+        total Desc {dLen=Length1 a} = Just a
+        total Desc {dLen=Length2 a b} = Nothing
+        total Desc {dItems=[]} = Just 0
+        total dsc@Desc {dItems=(i:is)} = do
+            x <- total i
+            rest <- total (dsc {dItems=is})
+            Just (x + rest)
+    
+    readItem :: Element -> Desc
+    readItem e = f dsc where
 
-        d5 = noDesc {tip=TRepetitive, len=Length1 24}
+        -- check description, recalculate length
+        f :: Desc -> Desc
 
-        d6 = noDesc {tip=TExplicit}
+        f dsc@Desc {dTip=TItem, dLen=Length0, dItems=items@(i:is)} =
+            dsc {dLen=recalculateLen dsc}
+        f dsc@Desc {dTip=TFixed, dLen=Length1 _, dItems=[]} = dsc
+        f dsc@Desc {dTip=TSpare, dLen=Length1 _, dItems=[]} = dsc
+        f dsc@Desc {dTip=TExtended, dLen=Length2 _ _} = dsc
+        f dsc@Desc {dTip=TRepetitive, dLen=Length0, dItems=items@(i:is)} = 
+            dsc {dLen=recalculateLen dsc}
+        f dsc@Desc {dTip=TExplicit, dLen=Length0, dItems=[]} = dsc
+        f dsc@Desc {dTip=TCompound, dLen=Length0, dItems=items@(i:is)} = dsc
+        f x = error $ "error in description: " ++ (dName x)
 
-        d7 = noDesc {tip=TCompound, items=[d1,d1,d1,d1,d1,d1,d1,d1]}
+        -- get all elements
+        dsc = Desc {
+            dName = fromJust . findAttr (name "name") $ e
+            , dTip = read . ("T"++) . fromMaybe "Item" . findAttr (name "type") $ e
+            , dDsc = fromMaybe "" (getChild e "dsc" >>= return . strContent)
+            , dLen = readLength $ fromMaybe "" (getChild e "len" >>= return . strContent)
+            , dItems = map readItem . fromMaybe [] $ do
+                getChild e "items" >>= return . elChildren
+            , dToInt = Nothing
+            , dFromInt = Nothing
+            , dToFloat = Nothing
+            , dFromFloat = Nothing
+        }
 
-    putStrLn . show . sizeOf d1 $ x
-    putStrLn . show . sizeOf d1a $ x
-    putStrLn . show . sizeOf d2 $ x
-    putStrLn . show . sizeOf d2a $ x
-
-    putStrLn "---"
-    putStrLn . show . sizeOf d3 $ x
-    putStrLn . show . sizeOf d3a $ x
-
-    putStrLn "---"
-    putStrLn . show . sizeOf d4 $ x
-    putStrLn . show . sizeOf d4 $ y
-
-    putStrLn "---"
-    putStrLn . show . sizeOf d5 $ x
-    putStrLn . show . sizeOf d5 $ y
-
-    putStrLn "---"
-    putStrLn . show . sizeOf d6 $ x
-    putStrLn . show . sizeOf d6 $ y
-
-    putStrLn "---"
-    putStrLn . show . sizeOf d7 $ z
-
-    {-
-    rec <- do
-        i036 <- 
-        i037 <-
-        i000 <- 
-        return . Compound $ ...
-    -}
-
-    return ()
