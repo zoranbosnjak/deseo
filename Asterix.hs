@@ -16,6 +16,8 @@ module Asterix
 import Data.Maybe (fromJust, fromMaybe, isJust)
 import Data.Monoid
 
+import Control.DeepSeq.Generics
+
 import qualified Data.ByteString as S
 import qualified Data.Map as Map
 
@@ -57,6 +59,8 @@ data Desc = Desc {  dName       :: String
                     , dToFloat  :: Maybe (B.Bits -> Float)
                     , dFromFloat :: Maybe (Float -> B.Bits)
                  }
+
+instance NFData Desc
 
 noDesc = Desc {
     dName = ""
@@ -175,9 +179,8 @@ getCategoryDescription s = (cat, ed, dsc) where
     category = head . filter (\e -> (qName . elName $ e) == "category") $ elements
     cat = getAttr category "cat"
     ed = getAttr category "edition"
-    items = map readItem . elChildren . fromJust . getChild category $ "items"
-    dsc = head . tail $ items -- TODO: fix this
-    -- dsc = head . tail . tail . tail . tail . tail $ items -- TODO: fix this
+    items = map (\i -> (dName (readItem i), readItem i)) . elChildren . fromJust . getChild category $ "items"
+    dsc = snd . head . tail $ items -- TODO: fix this
 
     getAttr el aName = read . fromJust . findAttr (name aName) $ el
     getChild el aName = findChild (name aName) $ el
