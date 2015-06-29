@@ -11,8 +11,12 @@ module Asterix
     , Desc(..)
     , sizeOf
     , getCategoryDescription
+    , getCategoryDescriptionsAll
+    , getCategoryDescriptions
+    , Edition(..)
 ) where
 
+import Data.List
 import Data.Maybe (fromJust, fromMaybe, isJust)
 import Data.Monoid
 
@@ -31,9 +35,26 @@ import Debug.Trace
 debug = flip trace
 
 type Category = Int
-type Edition = Float
 type Name = String
 type Size = Int
+
+data Edition = Edition Int Int
+
+instance NFData Edition
+
+instance Eq Edition where
+    Edition a1 b1 == Edition a2 b2 = (a1==a2) && (b1==b2)
+
+instance Ord Edition where
+    compare (Edition a1 b1) (Edition a2 b2) = (compare a1 a2) `mappend` (compare b1 b2)
+
+instance Show Edition where
+    show (Edition a b) = show a ++ "." ++ show b
+
+instance Read Edition where
+    readsPrec _ value = [(Edition (read a) (read b), "")] where
+        a = takeWhile (/='.') value
+        b = tail . dropWhile (/='.') $ value
 
 type Datagram = B.Bits
 type Datablock = B.Bits
@@ -260,4 +281,27 @@ getCategoryDescription s = (cat, ed, dsc) where
             , dToFloat = Nothing
             , dFromFloat = Nothing
         }
+
+getCategoryDescriptionsAll :: [String] -> [(Category, [(Edition, [(String, Desc)])])]
+getCategoryDescriptionsAll ss = [(cat, editions cat) | cat <- cats] where
+    all = sortBy cmp . map getCategoryDescription $ ss
+    cats = nub . map (\(c,_,_) -> c) $ all
+    editions cat = noDups cat . map (\(_,e,d) -> (e,d)) . filter (\(c,_,_) -> (c==cat)) $ all
+    cmp (c1,e1,_) (c2,e2,_) = (compare c1 c2) `mappend` (compare e1 e2)
+    noDups cat editions 
+        | nub ed == ed = editions
+        | otherwise = error $ "duplicated editions in cat: " ++ show cat
+        where
+            ed = map fst editions
+
+getCategoryDescriptions :: [(Category,Edition)] -> [String] -> [(Category, Edition, [(String, Desc)])]
+getCategoryDescriptions requested ss = do
+    (cat, editions) <- getCategoryDescriptionsAll ss
+    let ed = case lookup cat requested of
+                Nothing -> last editions
+                Just x -> case lookup x editions of
+                    Nothing -> error $ "cat: " ++ show cat ++ ", edition: " ++ show x ++ " not found!"
+                    Just y -> (x, y)
+
+    return (cat, fst ed, snd ed)
 
