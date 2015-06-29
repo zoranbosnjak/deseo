@@ -17,14 +17,18 @@ import Data.Maybe (fromJust, fromMaybe, isJust)
 import Data.Monoid
 
 import Control.DeepSeq.Generics
+import Control.Exception
 
 import qualified Data.ByteString as S
 import qualified Data.Map as Map
 
 import Text.XML.Light
-import qualified Data.ByteString as S
 
 import qualified Bits as B
+
+import Debug.Trace
+
+debug = flip trace
 
 type Category = Int
 type Edition = Float
@@ -172,7 +176,7 @@ sizeOf Desc {dTip=TCompound, dItems=items} b' = do
             Just (s + rest)
 
 -- read xml (may fail in case of errors in xml)
-getCategoryDescription :: String -> (Category, Edition, Desc)
+getCategoryDescription :: String -> (Category, Edition, [(String, Desc)])
 getCategoryDescription s = (cat, ed, dsc) where
     name s = blank_name {qName=s}
     elements = onlyElems . parseXML $ s
@@ -180,7 +184,26 @@ getCategoryDescription s = (cat, ed, dsc) where
     cat = getAttr category "cat"
     ed = getAttr category "edition"
     items = map (\i -> (dName (readItem i), readItem i)) . elChildren . fromJust . getChild category $ "items"
-    dsc = snd . head . tail $ items -- TODO: fix this
+    dsc = do
+        uap <- elChildren . fromJust . getChild category $ "uaps"
+        let uapName = qName . elName $ uap
+            uapItems = do 
+                item <- map strContent . elChildren $ uap
+                return $ case item of
+                    "" -> noDesc
+                    otherwise -> fromJust $ lookup item items
+            topLevel = Desc {
+                dName = ""
+                , dTip = TCompound
+                , dDsc = "Category " ++ (show cat)
+                , dLen = Length0
+                , dItems = force uapItems
+                , dToInt = Nothing
+                , dFromInt = Nothing
+                , dToFloat = Nothing
+                , dFromFloat = Nothing
+            }
+        return (uapName, topLevel)
 
     getAttr el aName = read . fromJust . findAttr (name aName) $ el
     getChild el aName = findChild (name aName) $ el
