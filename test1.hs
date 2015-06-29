@@ -2,6 +2,9 @@
 
 import System.Environment (getProgName, getArgs)
 
+import Data.List
+import Data.Monoid
+
 import Control.Monad
 import Control.Exception (evaluate)
 import Control.DeepSeq (force)
@@ -14,11 +17,14 @@ main = do
 
     -- read all files, force evaluation
     s <- sequence $ map readFile args
-    allProfiles <- evaluate $ force $ A.getCategoryDescriptions s
+    let requested = [ (2, A.Edition 1 0)
+                    ]
+    profiles <- evaluate . force . A.getCategoryDescriptions requested $ s
 
     -- (cat, edition, dsc) <- evaluate $ force $ A.getCategoryDescription s
     {- all asterix is evaluated at this point -}
 
-    putStrLn . show . length $ allProfiles
-    putStrLn . show . map fst $ allProfiles
+    forM_ profiles $ \(cat, edition, dsc) -> do
+        putStrLn $ show cat
+        putStrLn $ "  " ++ show edition
 
