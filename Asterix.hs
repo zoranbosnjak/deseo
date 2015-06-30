@@ -108,12 +108,16 @@ noDesc = Desc {
 data Item = Item [Item]
             | Fixed B.Bits
             | Spare Int
-            | Extended [Item]
+            | Extended ExtData
             | Repetitive [Item]
             | Explicit B.Bits
             | Compound [Maybe Item]
             -- | Rfs 
             deriving (Show)
+
+data ExtData =  ExtDecoded [Item]
+                | ExtRaw B.Bits
+                deriving (Show)
 
 {-
 itemLength = B.length . encode
