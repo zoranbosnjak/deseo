@@ -14,6 +14,9 @@ module Asterix
     , getCategoryDescriptionsAll
     , getCategoryDescriptions
     , Edition(..)
+    , getUap
+    , B.Bits(..)
+    , decode
 ) where
 
 import Data.List
@@ -87,6 +90,9 @@ data Desc = Desc {  dName       :: String
 
 instance NFData Desc
 
+instance Show Desc where
+    show d = (show . dTip $ d) ++ " (" ++ (dName d) ++ "), " ++ (show . dLen $ d)
+
 noDesc = Desc {
     dName = ""
     , dTip = TItem
@@ -99,15 +105,17 @@ noDesc = Desc {
     , dFromFloat = Nothing
 }
 
-data Item = Item [(Name,Item)]
+data Item = Item [Item]
             | Fixed B.Bits
             | Spare Int
-            | Extended [(Name,Item)]
+            | Extended [Item]
             | Repetitive [Item]
             | Explicit B.Bits
-            | Compound [(Name, Maybe Item)]
+            | Compound [Maybe Item]
             -- | Rfs 
+            deriving (Show)
 
+{-
 itemLength = B.length . encode
 
 -- encode items
@@ -115,8 +123,36 @@ encode :: Item -> B.Bits
 encode (Item xs) = mconcat . map (\(_,item) -> encode item) $ xs
 encode (Fixed b) = b
 encode _ = undefined
+-}
 
 -- decode items
+decode :: Desc -> B.Bits -> Maybe (Item, Size)
+
+-- decode Item (decode first subitem, decode the rest, then combine)
+decode Desc {dTip=TItem, dItems=[]} _ = Just (Item [], 0)
+decode d@Desc {dTip=TItem, dItems=(i:is)} b = do
+    (x,s1) <- decode i b
+    (Item y,s2) <- decode (d {dItems=is}) (B.drop s1 b)
+    let size = case (dLen d) of
+                -- if the size is known, take it
+                (Length1 n) -> n
+                otherwise -> s1+s2
+    Just (Item (x:y), size)
+
+-- decode Fixed
+decode Desc {dTip=TFixed, dLen=Length1 n} b = do
+    size <- checkSize n b
+    let raw = B.take size b
+        item = Fixed raw
+    Just (item, size)
+
+-- decode Spare
+decode Desc {dTip=TSpare, dLen=Length1 n} b = do
+    size <- checkSize n b
+    let raw = B.take size b
+        item = Spare size
+    if raw == (B.zeros size) then Just (item, size)
+    else Nothing
 
 checkSize :: Int -> B.Bits -> Maybe Int
 checkSize n b
@@ -294,7 +330,7 @@ getCategoryDescriptionsAll ss = [(cat, editions cat) | cat <- cats] where
         where
             ed = map fst editions
 
-getCategoryDescriptions :: [(Category,Edition)] -> [String] -> [(Category, Edition, [(String, Desc)])]
+getCategoryDescriptions :: [(Category,Edition)] -> [String] -> [(Category, (Edition, [(String, Desc)]))]
 getCategoryDescriptions requested ss = do
     (cat, editions) <- getCategoryDescriptionsAll ss
     let ed = case lookup cat requested of
@@ -303,5 +339,9 @@ getCategoryDescriptions requested ss = do
                     Nothing -> error $ "cat: " ++ show cat ++ ", edition: " ++ show x ++ " not found!"
                     Just y -> (x, y)
 
-    return (cat, fst ed, snd ed)
+    return (cat, (fst ed, snd ed))
+
+getUap :: Category -> [(String, Desc)] -> B.Bits -> Desc
+getUap 1 uaps b = undefined
+getUap _ uaps _ = fromJust . lookup "uap" $ uaps
 
