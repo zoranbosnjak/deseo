@@ -9,7 +9,6 @@ Author: Zoran Bosnjak (Sloveniacontrol)
 module Asterix
 (   Tip(..)
     , Desc(..)
-    , sizeOf
     , getCategoryDescription
     , getCategoryDescriptionsAll
     , getCategoryDescriptions
@@ -108,15 +107,15 @@ noDesc = Desc {
 data Item = Item [Item]
             | Fixed B.Bits
             | Spare Int
-            | Extended ExtData
+            | Extended ItemData
             | Repetitive [Item]
             | Explicit B.Bits
             | Compound [Maybe Item]
             -- | Rfs 
             deriving (Show)
 
-data ExtData =  ExtDecoded [Item]
-                | ExtRaw B.Bits
+data ItemData = Decoded [Item]
+                | Raw B.Bits
                 deriving (Show)
 
 {-
@@ -146,77 +145,75 @@ decode d@Desc {dTip=TItem, dItems=(i:is)} b = do
 -- decode Fixed
 decode Desc {dTip=TFixed, dLen=Length1 n} b = do
     size <- checkSize n b
-    let raw = B.take size b
-        item = Fixed raw
-    Just (item, size)
+    Just (Fixed $ B.take size b, size)
 
 -- decode Spare
 decode Desc {dTip=TSpare, dLen=Length1 n} b = do
     size <- checkSize n b
-    let raw = B.take size b
-        item = Spare size
-    if raw == (B.zeros size) then Just (item, size)
-    else Nothing
+    if (B.take size b) /= (B.zeros size) then Nothing
+    else Just (Spare size, size)
 
-checkSize :: Int -> B.Bits -> Maybe Int
-checkSize n b
-    | B.length b < n = Nothing
-    | otherwise = Just n
-
--- sizeOf
-sizeOf :: Desc -> B.Bits -> Maybe Size
-
--- sizeOf TItem
-sizeOf Desc {dTip=TItem, dLen=Length1 n} b = checkSize n b
-sizeOf Desc {dTip=TItem, dItems=[]} _ = Just 0
-sizeOf d@Desc {dTip=TItem, dItems=(i:is)} b = do
-    x <- sizeOf i b
-    y <- sizeOf (d {dItems=is}) (B.drop x b)
-    Just (x+y)
-
--- sizeOf TFixed
-sizeOf Desc {dTip=TFixed, dLen=Length1 n} b = checkSize n b
-
--- sizeOf TSpare
-sizeOf Desc {dTip=TSpare, dLen=Length1 n} b = do
-    size <- checkSize n b
-    if (B.take size b) == (B.zeros size) then Just size
-    else Nothing
-
--- sizeOf TExtended
-sizeOf d@Desc {dTip=TExtended, dLen=Length2 n1 n2} b = do
-    next <- checkSize n1 b
-    if (B.index b (next-1)) then dig next
-    else Just n1
+-- decode Extended
+decode d@Desc {dTip=TExtended, dLen=Length2 n1 n2} b = do
+    size <- checkSize n1 b
+    if (B.index b (size-1)) then dig size
+    else Just (fetch size, size)
         where
+            fetch size = Extended . Raw . B.take size $ b
             dig offset = do 
-                next <- checkSize offset b
-                if (B.index b (next-1)) then dig (next+n2)
-                else Just next
+                size <- checkSize offset b
+                if (B.index b (size-1)) then dig (size+n2)
+                else Just (fetch size, size)
 
--- sizeOf TRepetitive
-sizeOf Desc {dTip=TRepetitive, dLen=Length1 n} b = do
-    next <- checkSize 8 b
-    let val = B.toUnsigned . B.take next $ b
-    checkSize (8+val*n) b
-sizeOf Desc {dTip=TRepetitive, dItems=items} b = undefined
+-- decode Repetitive
+decode d@Desc {dTip=TRepetitive} b = do
+    s8 <- checkSize 8 b
+    let rep = B.toUnsigned . B.take s8 $ b
+        b' = B.drop s8 b
+    (items, size) <- decodeSubitems rep b' [] 8
+    Just (Repetitive (reverse items), calcSize size rep) where
+        calcSize size rep = case (dLen d) of
+            Length1 a -> (8+rep*a)
+            otherwise -> size
+        decodeSubitems :: Int -> B.Bits -> [Item] -> Size -> Maybe ([Item], Size)
+        decodeSubitems 0 _ acc size = Just (acc, size)
+        decodeSubitems n b acc size = do
+            -- decode single group of items as TItem
+            (item, itemSize) <- decode (d {dTip=TItem}) b
+            decodeSubitems (n-1) (B.drop itemSize b) (item:acc) (itemSize+size)
 
--- sizeOf TExplicit
-sizeOf Desc {dTip=TExplicit} b = do
-    next <- checkSize 8 b
-    let val = B.toUnsigned . B.take next $ b
+-- decode Explicit
+decode Desc {dTip=TExplicit} b = do
+    s8 <- checkSize 8 b
+    let val = B.toUnsigned . B.take s8 $ b
     case val of
         0 -> Nothing
-        otherwise -> checkSize (8*val) b
+        otherwise -> do
+            size <- checkSize (8*val) b
+            Just (Explicit . B.take size $ b, size)
 
--- sizeOf TCompound
-sizeOf Desc {dTip=TCompound, dItems=items} b' = do
+-- decode Compound
+decode Desc {dTip=TCompound, dItems=items} b' = do
     b <- B.checkAligned b'
-    (fspec, fspecTotal) <- getFspec b'
+    (fspec, fspecTotal) <- getFspec b
     -- TODO: check length of items (must be >= length of fspec)
-    let subitems = map snd . filter (\(flag,item) -> flag) $ zip fspec items
-    sub <- dig subitems (B.drop (length fspec) b)
-    Just ((length fspecTotal) + sub) where
+    let subitems :: [Maybe Desc]
+        subitems = map (\(f,i) -> if f then Just i else Nothing) $ zip fspec items
+        offset = length fspecTotal
+
+    (items, size) <- dig subitems (B.drop offset b) [] offset
+    Just (Compound (reverse items), size) where
+
+        dig :: [Maybe Desc] -> B.Bits -> [Maybe Item] -> Size -> Maybe ([Maybe Item], Size)
+        dig [] _ acc size = Just (acc, size)
+        dig (x:xs) b acc size = do
+            (item, itemSize) <- decodeItem x b
+            dig xs (B.drop itemSize b) (item:acc) (itemSize+size)
+                where
+                    decodeItem Nothing _ = return (Nothing, 0)
+                    decodeItem (Just dsc) b = do
+                        (item, size) <- decode dsc b
+                        return (Just item, size)
 
         getFspec :: B.Bits -> Maybe ([Bool],[Bool])
         getFspec b = do
@@ -229,12 +226,11 @@ sizeOf Desc {dTip=TCompound, dItems=items} b' = do
                     rvTotal = val ++ remTotal
                 Just (rv, rvTotal)
 
-        dig :: [Desc] -> B.Bits -> Maybe Size
-        dig [] _ = Just 0
-        dig (i:is) b = do
-            s <- sizeOf i b
-            rest <- dig is (B.drop s b)
-            Just (s + rest)
+-- check that requested number of bits are available
+checkSize :: Int -> B.Bits -> Maybe Int
+checkSize n b
+    | B.length b < n = Nothing
+    | otherwise = Just n
 
 -- read xml (may fail in case of errors in xml)
 getCategoryDescription :: String -> (Category, Edition, [(String, Desc)])
