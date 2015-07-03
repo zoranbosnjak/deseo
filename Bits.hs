@@ -17,10 +17,12 @@ module Bits
   , pack
   , unpack
   , checkAligned
+  , toByteString
+  , null
 ) where
 
 import qualified Prelude as P
-import Prelude hiding (length, any, toInteger, take, drop)
+import Prelude hiding (length, any, toInteger, take, drop, null)
 import Data.Monoid
 import qualified Data.ByteString as S
 import Data.Word
@@ -140,4 +142,10 @@ checkAligned bs@(Bytes x) = Just bs
 checkAligned bs@(Slice x a b)
     | (a `mod` 8) == 0 = Just bs
     | otherwise = Nothing
+
+toByteString :: Bits -> S.ByteString
+toByteString bs = undefined
+
+null :: Bits -> Bool
+null = (==0) . length 
 

@@ -16,6 +16,8 @@ module Asterix
     , getUap
     , B.Bits(..)
     , decode
+    , DataBlock(..)
+    , toDataBlocks
 ) where
 
 import Data.List
@@ -58,9 +60,19 @@ instance Read Edition where
         a = takeWhile (/='.') value
         b = tail . dropWhile (/='.') $ value
 
-type Datagram = B.Bits
-type Datablock = B.Bits
-type Record = B.Bits
+data DataBlock = DataBlock Category B.Bits
+instance Show DataBlock where
+    show (DataBlock cat b) = "DataBlock ("++(show cat)++") len: "++(show . B.length $ b)
+
+toDataBlocks :: B.Bits -> [DataBlock]
+toDataBlocks bs =   if (B.null bs) then []
+                    else db:(toDataBlocks bs') where
+                        x = fromJust $ B.checkAligned bs
+                        cat = B.toUnsigned $ B.take 8 x
+                        len = B.toUnsigned . B.take 16 . B.drop 8 $ x
+                        y = B.drop 24 . B.take (len*8) $ x
+                        db = DataBlock cat y
+                        bs' = B.drop (len*8) x
 
 data Tip = TItem
            | TFixed
