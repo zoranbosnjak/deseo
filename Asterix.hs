@@ -8,6 +8,7 @@ Author: Zoran Bosnjak (Sloveniacontrol)
 
 module Asterix
 (   Tip(..)
+    , Item(..)
     , Desc(..)
     , getCategoryDescription
     , getCategoryDescriptionsAll
@@ -16,8 +17,11 @@ module Asterix
     , getUap
     , B.Bits(..)
     , decode
+    , encode 
     , DataBlock(..)
     , toDataBlocks
+    , toRecords
+    , subitem
 ) where
 
 import Data.List
@@ -130,15 +134,12 @@ data ItemData = Decoded [Item]
                 | Raw B.Bits
                 deriving (Show)
 
-{-
 itemLength = B.length . encode
 
 -- encode items
 encode :: Item -> B.Bits
-encode (Item xs) = mconcat . map (\(_,item) -> encode item) $ xs
+encode (Item xs) = mconcat . map encode $ xs
 encode (Fixed b) = b
-encode _ = undefined
--}
 
 -- decode items
 decode :: Desc -> B.Bits -> Maybe (Item, Size)
@@ -353,7 +354,27 @@ getCategoryDescriptions requested ss = do
 
     return (cat, (fst ed, snd ed))
 
-getUap :: Category -> [(String, Desc)] -> B.Bits -> Desc
+getUap :: Category -> [(Category, [(String, Desc)])] -> B.Bits -> Maybe Desc
 getUap 1 uaps b = undefined
-getUap _ uaps _ = fromJust . lookup "uap" $ uaps
+getUap cat uaps _ = lookup cat uaps >>= lookup "uap"
 
+-- split datablock to records
+toRecords :: [(Category, [(String, Desc)])] -> DataBlock -> Maybe [(Item, Desc)]
+toRecords profiles (DataBlock cat bs) = getRecord profiles cat bs [] where
+    getRecord profiles cat bs acc = 
+        if (B.null bs) then Just . reverse $ acc
+        else do
+            dsc <- getUap cat profiles bs
+            (item,size) <- decode dsc bs
+            getRecord profiles cat (B.drop size bs) ((item,dsc):acc)
+
+subitem :: [String] -> (Item, Desc) -> Maybe (Item, Desc)
+subitem [] (item, dsc) = Just (item,dsc)
+subitem (x:xs) (item, dsc) = do
+    ix <- elemIndex x (map dName (dItems dsc))
+    item2 <- getSubItem item ix
+    let dsc2 = (dItems dsc) !! ix
+    subitem xs (item2, dsc2) where
+        getSubItem (Item items) ix = Just (items !! ix)
+        getSubItem (Compound maybeItems) ix = maybeItems !! ix
+    
