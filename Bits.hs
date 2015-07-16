@@ -1,39 +1,47 @@
 
 {-
-Bit manipulation
+
+Bit string manipulation
+(low performance version, based on list)
 
 Author: Zoran Bosnjak (Sloveniacontrol)
 
 -}
 
 module Bits
-( Bits(..)
-  , length
-  , take
-  , drop
-  , zeros
-  , index
-  , toUnsigned
-  , pack
-  , unpack
-  , checkAligned
-  , toByteString
-  , null
+(   Bits
+    , bytesRequired
+    , length
+    , take
+    , drop
+    , index
+    , zeros
+    , pack
+    , unpack
+    , null
+    , checkAligned
+    , toUnsigned
+    , fromByteString
+    , toByteString
 ) where
 
 import qualified Prelude as P
-import Prelude hiding (length, any, toInteger, take, drop, null)
+import Prelude hiding (length, any, toInteger, take, drop, null, (!!))
 import Data.Monoid
 import qualified Data.ByteString as S
 import Data.Word
 import qualified Data.Bits as B
-import Data.List (foldl1')
+import Data.List (foldl', foldl1')
 
-data Bits = Bytes S.ByteString
-            | Slice S.ByteString Int Int
+import Debug.Trace
+
+dump = flip trace
+
+data Bits = Bits [Bool] 
+                deriving (Eq)
 
 instance Show Bits where
-    show b = "Bits " ++ disp (unpack b) where
+    show (Bits b) = "Bits " ++ disp b where
         disp [] = ""
         disp x = foldl1' (\a b -> a++" "++b) . spl . map f $ x
         f True = '1'
@@ -45,107 +53,53 @@ instance Show Bits where
         fill a = P.take 8 (a++repeat '.')
 
 instance Monoid Bits where
-    mempty = Bytes S.empty
+    mempty = Bits []
+    Bits a `mappend` Bits b = Bits (a `mappend` b)
 
-    mappend (Bytes a) (Bytes b) = Bytes (a `mappend` b)
-    mappend b1@(Bytes a) b2@(Slice b x y) = undefined
-    mappend b1 b2 = undefined
+bytesRequired numOfBits = a + if b==0 then 0 else 1 where
+    (a,b) = divMod numOfBits 8
 
--- shift ByteString by number of bits
-shiftByteStringR :: Int -> S.ByteString -> [Word8]
-shiftByteStringR n b 
-    | n < 0 = error "expect positive shift"
-    | otherwise = 
-        adjust . rotate . shift1 $ b where
-        (byteShift, bitShift) = divMod n 8
-        shift1 = S.take (S.length b - byteShift)
-        rotate = S.map (flip B.rotateR $ bitShift)
-        m1 = B.shiftR (0xff :: Word8) bitShift -- mask1
-        m2 = B.complement m1            -- mask2
-        v1 = S.map (m1 B..&.)
-        v2 = S.cons 0 . S.init . S.map (m2 B..&.)
-        adjust x = S.zipWith (B..|.) (v1 x) (v2 x)
-
-bytesRequired numOfBits = a + if b==0 then 0 else 1 where (a,b) = divMod numOfBits 8
-
--- convert to compact form
-toMinList :: Bits -> [Word8]
-toMinList (Bytes x) = S.unpack x
-toMinList (Slice x a b) = mask . reduce2 . shiftByteStringR n . reduce1 $ x where
-    total = b-a
-    n = ((8 - (b `mod` 8)) `mod` 8) -- required shift
-    reduce1 = S.take (i2-i1) . S.drop i1 -- shorter bytestring stage 1
-    i1 = a `div` 8
-    i2 = bytesRequired b -- second word8 index
-    reduce2 y = P.drop ((P.length y) - (bytesRequired total)) y
-    mask [] = []
-    mask (x:xs) = ((B..&.) mask1 x):xs
-    mask1 = B.complement $ B.shiftL 0xff (total `mod` 8)
-
--- convert bits to unsigned integer
-toUnsigned :: Num a => Bits -> a
-toUnsigned bs = let words = reverse . map P.fromIntegral . toMinList $ bs
-                    factors = map (256^) [0..]
-                    elements = zipWith (*) words factors
-                in foldr (+) 0 elements
-
-instance Eq Bits where
-    a == b = (length a == length b) && (toMinList a == toMinList b)
-
--- calculate bits length
-length :: Bits -> Int
-length (Bytes x) = (S.length x)*8
-length (Slice _ a b) = b-a
-
--- take first n bits
-take :: Int -> Bits -> Bits
-take n (Bytes x)
-    | b == 0 = Bytes (S.take a x)
-    | otherwise = Slice x 0 n where
-        (a,b) = divMod n 8
-take n (Slice x a b) = Slice x a (a+n)
-
--- drop first n bits
-drop :: Int -> Bits -> Bits
-drop n bs@(Bytes x)
-    | b == 0 = Bytes (S.drop a x)
-    | otherwise = Slice x n (length bs) where
-        (a,b) = divMod n 8
-drop n (Slice x a b) = Slice x (a+n) b
+length (Bits a) = P.length a
+take n (Bits a) = Bits $ P.take n a
+drop n (Bits a) = Bits $ P.drop n a
+index (Bits b) n = (P.!!) b n
+pack = Bits
+unpack (Bits b) = b
+null (Bits b) = P.null b
 
 -- generate bitstring of all zeros
 zeros :: Int -> Bits
-zeros n
-    | b == 0 = Bytes . S.pack . replicate a $ 0
-    | otherwise = Slice (S.pack . replicate (a+1) $ 0) 0 n where
-        (a,b) = divMod n 8
-
--- get bit value at given index
-index :: Bits -> Int -> Bool
-index bs n 
-    | (n>=length bs) = error "index out of range"
-    | otherwise = B.testBit (word bs n) (offset bs n) where
-        word (Bytes x) n = S.index x (div n 8)
-        word (Slice x a b) n = S.index x (div (a+n) 8)
-        offset (Bytes _) n = 7 - (mod n 8)
-        offset (Slice x a b) n = 7 - (mod (a+n) 8)
-
-pack :: [Bool] -> Bits
-pack = undefined
-
-unpack :: Bits -> [Bool]
-unpack b = [index b i | i<-[0..(length b)-1]]
+zeros n = Bits $ replicate n False
 
 -- is byte aligned
 checkAligned :: Bits -> Maybe Bits
-checkAligned bs@(Bytes x) = Just bs
-checkAligned bs@(Slice x a b)
-    | (a `mod` 8) == 0 = Just bs
-    | otherwise = Nothing
+checkAligned b = case (length b `mod` 8) of
+    0 -> Just b
+    _ -> Nothing
+
+-- False=0, True=1
+toNum :: Num a => Bool -> a
+toNum False = 0
+toNum True = 1
+
+-- convert bits to unsigned number
+toUnsigned :: Num a => Bits -> a
+toUnsigned (Bits b) = sum . zipWith (*) factors . map toNum . reverse $ b where
+    factors = map (2^) [0..]
+
+fromByteString :: S.ByteString -> Bits
+fromByteString = Bits . concatMap octet . S.unpack where
+    octet w = map (B.testBit w) [7,6..0]
 
 toByteString :: Bits -> S.ByteString
-toByteString bs = undefined
+toByteString (Bits s) = S.pack . map toWord . break8 $ s where
+    break8 :: [a] -> [[a]]
+    break8 [] = [] 
+    break8 s = a : break8 b where (a,b) = splitAt 8 s
+    toWord :: [Bool] -> Word8
+    toWord s = sum $ zipWith (*) (map (2^) [7,6..0]) (map toNum s)
 
-null :: Bits -> Bool
-null = (==0) . length 
+main :: IO ()
+main = do
+    return ()
 
