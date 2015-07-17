@@ -10,19 +10,24 @@ module Asterix
 (   Tip(..)
     , Item(..)
     , Desc(..)
+    , itemFromValue
     , getCategoryDescription
     , getCategoryDescriptionsAll
     , getCategoryDescriptions
     , Edition(..)
     , getUapByName
     , getUapByData
-    , B.Bits(..)
-    , decode
-    , encode 
+    -- , decode
+    -- , encode 
     , DataBlock(..)
     , toDataBlocks
-    , toRecords
+    --, toRecords
+    , getDesc
+    , getDesc'
     -- , subitem
+    --, item
+    --, Content(..)
+    --, toContent
 ) where
 
 import Data.List
@@ -31,6 +36,7 @@ import Data.Monoid
 
 import Control.DeepSeq.Generics
 import Control.Exception
+import Control.Monad.State
 
 import qualified Data.ByteString as S
 import qualified Data.Map as Map
@@ -89,9 +95,9 @@ data Tip = TItem
            | TExplicit
            | TCompound
            -- | TRfs
-           deriving (Show, Read)
+           deriving (Show, Read, Eq)
 
-data Length = Length0 | Length1 Int | Length2 Int Int deriving (Show, Read)
+data Length = Length0 | Length1 Int | Length2 Int Int deriving (Show, Read, Eq)
 
 data Desc = Desc {  dName       :: String
                     , dTip      :: Tip
@@ -110,7 +116,7 @@ data Desc = Desc {  dName       :: String
                             http://book.realworldhaskell.org/read/writing-a-library-working-with-json-data.html
                             http://book.realworldhaskell.org/read/using-typeclasses.html
                     -}
-                 }
+                 } deriving (Eq)
 
 instance NFData Desc
 
@@ -125,34 +131,41 @@ noDesc = Desc {
     , dItems = []
 }
 
-data Item = Item Desc [Item]
-            | Fixed Desc B.Bits
-            | Spare Desc Int
-            | Extended Desc ItemData
-            | Repetitive Desc [Item]
-            | Explicit Desc B.Bits
-            | Compound Desc [(String,Item)]
-            -- | Rfs 
-            deriving (Show)
+data Item = Item Desc B.Bits deriving (Show,Eq)
 
-data ItemData = Decoded [Item]
-                | Raw B.Bits
-                deriving (Show)
+-- create item
 
-itemLength = B.length . encode
+-- item :: Desc -> Content -> Item
 
--- create items
-data Content = Content
+itemFromValue :: Integral a => Desc -> a -> Item
+itemFromValue d@Desc {dLen=Length1 ln} val = case (dTip d) of
+    TItem -> Item d (B.bits ln val)
+    TFixed -> Item d (B.bits ln val)
+
+itemFromList :: Desc -> [Item] -> Item
+itemFromList = undefined
+
+itemFromMap :: Desc -> [(String,Item)] -> Item
+itemFromMap = undefined
+
+setItem :: [String] -> Item -> State Item ()
+setItem name subitem = undefined
+-- setItem name subitem = State $ \item -> ((),item)
+
+{-
 item :: Desc -> Content -> Item
-item = undefined
+item d@Desc {dTip=TItem, dItems=subitems} c@(CList (IList [items])) = Item d c
+item d@Desc {dTip=TFixed} c@(CBits b) = Fixed d c
+item _ _ = undefined
 
 -- newItem d@Desc {dTip=TItem, dItems=subitems} [items] = undefined
 -- newItem d@Desc {dTip=TCompound, dItems=items} = (Compound . replicate (length items) $ Nothing, d)
 
 -- encode items
 encode :: Item -> B.Bits
-encode (Item d xs) = mconcat . map encode $ xs
-encode (Fixed d b) = b
+encode = undefined
+--encode (Item d xs) = mconcat . map encode $ xs
+--encode (Fixed d b) = b
 
 -- like decode, but given bits must be exact in size and decoding must be possible
 decodeExact :: Desc -> B.Bits -> Item
@@ -163,7 +176,7 @@ decodeExact d b = assert (size==B.length b) item where
 decode :: Desc -> B.Bits -> Maybe (Item, Size)
 
 -- decode Item (decode first subitem, decode the rest, then combine)
-decode d@Desc {dTip=TItem, dItems=[]} _ = Just (Item d [], 0)
+decode d@Desc {dTip=TItem, dItems=[]} _ = Just (Item d (CList . IList $ []), 0)
 decode d@Desc {dTip=TItem, dItems=(i:is)} b = do
     (x,s1) <- decode i b
     (Item d2 y,s2) <- decode (d {dItems=is}) (B.drop s1 b)
@@ -171,18 +184,20 @@ decode d@Desc {dTip=TItem, dItems=(i:is)} b = do
                 -- if the size is known, take it
                 (Length1 n) -> n
                 otherwise -> s1+s2
-    Just (Item d (x:y), size)
+        CList y'' = y
+        y' = fromIList y''
+    Just (Item d (CList . IList $ (x:y')), size)
 
 -- decode Fixed
 decode d@Desc {dTip=TFixed, dLen=Length1 n} b = do
     size <- checkSize n b
-    Just (Fixed d $ B.take size b, size)
+    Just (Fixed d $ CBits $ B.take size b, size)
 
 -- decode Spare
 decode d@Desc {dTip=TSpare, dLen=Length1 n} b = do
     size <- checkSize n b
     if (B.take size b) /= (B.zeros size) then Nothing
-    else Just (Spare d size, size)
+    else Just (Spare d (CInt size), size)
 
 -- decode Extended
 decode d@Desc {dTip=TExtended, dLen=Length2 n1 n2} b = do
@@ -190,7 +205,7 @@ decode d@Desc {dTip=TExtended, dLen=Length2 n1 n2} b = do
     if (B.index b (size-1)) then dig size
     else Just (fetch size, size)
         where
-            fetch size = Extended d . Raw . B.take size $ b
+            fetch size = Extended d . CData . Raw . B.take size $ b
             dig offset = do 
                 size <- checkSize offset b
                 if (B.index b (size-1)) then dig (size+n2)
@@ -202,7 +217,7 @@ decode d@Desc {dTip=TRepetitive} b = do
     let rep = B.toUnsigned . B.take s8 $ b
         b' = B.drop s8 b
     (items, size) <- decodeSubitems rep b' [] 8
-    Just (Repetitive d (reverse items), calcSize size rep) where
+    Just (Repetitive d (CList . IList . reverse $ items), calcSize size rep) where
         calcSize size rep = case (dLen d) of
             Length1 a -> (8+rep*a)
             otherwise -> size
@@ -221,7 +236,7 @@ decode d@Desc {dTip=TExplicit} b = do
         0 -> Nothing
         otherwise -> do
             size <- checkSize (8*val) b
-            Just (Explicit d . B.take size $ b, size)
+            Just (Explicit d . CBits . B.take size $ b, size)
 
 -- decode Compound
 decode d@Desc {dTip=TCompound, dItems=items} b' = do
@@ -233,7 +248,7 @@ decode d@Desc {dTip=TCompound, dItems=items} b' = do
         offset = length fspecTotal
 
     (items, size) <- dig subitems (B.drop offset b) [] offset
-    Just (Compound d items, size) where
+    Just (Compound d (CMap . IMap $ items), size) where
 
         dig :: [(String,Desc)] -> B.Bits -> [(String,Item)] -> Size -> Maybe ([(String,Item)], Size)
         dig [] _ acc size = Just (acc, size)
@@ -252,6 +267,7 @@ decode d@Desc {dTip=TCompound, dItems=items} b' = do
                 let rv = (init val) ++ rem
                     rvTotal = val ++ remTotal
                 Just (rv, rvTotal)
+-}
 
 -- check that requested number of bits are available
 checkSize :: Int -> B.Bits -> Maybe Int
@@ -367,6 +383,7 @@ getUapByData :: Category -> [(Category, [(String, Desc)])] -> B.Bits -> Maybe De
 getUapByData 1 uaps b = undefined
 getUapByData cat uaps _ = lookup cat uaps >>= lookup "uap"
 
+{-
 -- split datablock to records
 toRecords :: [(Category, [(String, Desc)])] -> DataBlock -> Maybe [Item]
 toRecords profiles (DataBlock cat bs) = getRecord profiles cat bs [] where
@@ -377,7 +394,6 @@ toRecords profiles (DataBlock cat bs) = getRecord profiles cat bs [] where
             (item,size) <- decode dsc bs
             getRecord profiles cat (B.drop size bs) (item:acc)
 
-{-
 subitem :: [String] -> (Item, Desc) -> Maybe (Item, Desc)
 subitem [] (item, dsc) = Just (item,dsc)
 subitem (x:xs) (item, dsc) = do
@@ -388,7 +404,16 @@ subitem (x:xs) (item, dsc) = do
         getSubItem (Item items) ix = Just (items !! ix)
         getSubItem (Compound maybeItems) ix = maybeItems !! ix
 -}  
-    
+
+getDesc :: Desc -> [String] -> Maybe Desc
+getDesc d [] = Just d
+getDesc d (x:xs) = do
+    d1 <- find x d
+    getDesc d1 xs where
+        find name dsc = lookup name $ [(dName d,d) | d <- dItems dsc]
+
+getDesc' d s = fromJust $ getDesc d s
+
 main :: IO ()
 main = do
     return  ()
