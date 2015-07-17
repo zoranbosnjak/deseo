@@ -10,7 +10,7 @@ Author: Zoran Bosnjak (Sloveniacontrol)
 
 module Bits
 (   Bits
-    , bytesRequired
+    , bits
     , length
     , take
     , drop
@@ -56,9 +56,6 @@ instance Monoid Bits where
     mempty = Bits []
     Bits a `mappend` Bits b = Bits (a `mappend` b)
 
-bytesRequired numOfBits = a + if b==0 then 0 else 1 where
-    (a,b) = divMod numOfBits 8
-
 length (Bits a) = P.length a
 take n (Bits a) = Bits $ P.take n a
 drop n (Bits a) = Bits $ P.drop n a
@@ -67,9 +64,16 @@ pack = Bits
 unpack (Bits b) = b
 null (Bits b) = P.null b
 
--- generate bitstring of all zeros
-zeros :: Int -> Bits
-zeros n = Bits $ replicate n False
+-- generate bitstring
+bits :: Integral a => Int -> a -> Bits
+bits n val = Bits . map toBool $ f n val [] where
+    f 0 _ acc = acc
+    f n val acc = f (n-1) a (b:acc) where
+        (a,b) = divMod val 2
+    toBool 0 = False
+    toBool 1 = True
+
+zeros n = bits n 0
 
 -- is byte aligned
 checkAligned :: Bits -> Maybe Bits
@@ -78,26 +82,28 @@ checkAligned b = case (length b `mod` 8) of
     _ -> Nothing
 
 -- False=0, True=1
-toNum :: Num a => Bool -> a
-toNum False = 0
-toNum True = 1
+boolVal :: Num a => Bool -> a
+boolVal False = 0
+boolVal True = 1
 
 -- convert bits to unsigned number
 toUnsigned :: Num a => Bits -> a
-toUnsigned (Bits b) = sum . zipWith (*) factors . map toNum . reverse $ b where
+toUnsigned (Bits b) = sum . zipWith (*) factors . map boolVal . reverse $ b where
     factors = map (2^) [0..]
 
 fromByteString :: S.ByteString -> Bits
 fromByteString = Bits . concatMap octet . S.unpack where
     octet w = map (B.testBit w) [7,6..0]
 
-toByteString :: Bits -> S.ByteString
-toByteString (Bits s) = S.pack . map toWord . break8 $ s where
-    break8 :: [a] -> [[a]]
-    break8 [] = [] 
-    break8 s = a : break8 b where (a,b) = splitAt 8 s
-    toWord :: [Bool] -> Word8
-    toWord s = sum $ zipWith (*) (map (2^) [7,6..0]) (map toNum s)
+toByteString :: Bits -> Maybe S.ByteString
+toByteString bs = do
+    (Bits s) <- checkAligned bs
+    return . S.pack . map toWord . break8 $ s where
+        break8 :: [a] -> [[a]]
+        break8 [] = [] 
+        break8 s = a : break8 b where (a,b) = splitAt 8 s
+        toWord :: [Bool] -> Word8
+        toWord s = sum $ zipWith (*) (map (2^) [7,6..0]) (map boolVal s)
 
 main :: IO ()
 main = do
