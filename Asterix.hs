@@ -10,7 +10,6 @@ module Asterix
 (   Tip(..)
     , Item(..)
     , Desc(..)
-    , itemFromValue
     , getCategoryDescription
     , getCategoryDescriptionsAll
     , getCategoryDescriptions
@@ -28,6 +27,10 @@ module Asterix
     --, item
     --, Content(..)
     --, toContent
+    , create
+    , fromValue
+    , setItem
+    , sizeOf
 ) where
 
 import Data.List
@@ -47,7 +50,7 @@ import qualified Bits as B
 
 import Debug.Trace
 
-debug = flip trace
+dump = flip trace
 
 type Category = Int
 type Name = String
@@ -134,23 +137,120 @@ noDesc = Desc {
 data Item = Item Desc B.Bits deriving (Show,Eq)
 
 -- create item
+-- itemX :: Content -> Desc -> Item
+-- if Content is applied to the function, the return
+-- value is a general transform function from Desc -> Item
 
--- item :: Desc -> Content -> Item
+fromValue :: Integral a => a -> Desc -> Item
+fromValue val d@Desc {dLen=Length1 len} = case (dTip d) of
+    TItem -> Item d (B.bits len val)
+    TFixed -> Item d (B.bits len val)
 
-itemFromValue :: Integral a => Desc -> a -> Item
-itemFromValue d@Desc {dLen=Length1 ln} val = case (dTip d) of
-    TItem -> Item d (B.bits ln val)
-    TFixed -> Item d (B.bits ln val)
+fromValues :: Integral a => [(String,a)] -> Desc -> Item
+fromValues = undefined
 
-itemFromList :: Desc -> [Item] -> Item
-itemFromList = undefined
+fromSpare :: Desc -> Item
+fromSpare d@Desc {dTip=TSpare, dLen=Length1 len} = Item d (B.bits len 0)
 
-itemFromMap :: Desc -> [(String,Item)] -> Item
-itemFromMap = undefined
+-- create record from profile and transform function
+create :: Desc -> State Item () -> Item
+create profile@Desc {dTip=TCompound} transform = execState transform $ emptyRecord profile where
+    emptyRecord d = Item d $ B.bits 0 0
 
-setItem :: [String] -> Item -> State Item ()
-setItem name subitem = undefined
--- setItem name subitem = State $ \item -> ((),item)
+-- set subitem to compound item (stateful computation)
+setItem :: String -> (Desc -> Item) -> State Item ()
+setItem name toItem = state $ \(Item dsc@Desc {dTip=TCompound} bs) -> ((),Item dsc newBs) where
+    newBs = newFspec `mappend` (mconcat newSubitems)
+    newFspec = setFspecBit name fspec
+    newSubitems = setOrReplace name subitems
+    (fspec,subitems) = undefined
+
+    setFspecBit = undefined
+    setOrReplace = undefined
+
+delItem :: String -> State Item ()
+delItem = undefined
+
+-- calculate items size
+sizeOf :: Desc -> B.Bits -> Maybe Size
+
+-- size of Item
+sizeOf d@Desc {dTip=TItem, dLen=Length1 n} b = checkSize n b
+sizeOf d@Desc {dTip=TItem, dItems=[]} _ = Just 0
+sizeOf d@Desc {dTip=TItem, dItems=(i:is)} b = do
+    size <- sizeOf i b
+    rest <- sizeOf (d {dItems=is}) (B.drop size b)
+    Just (size+rest)
+
+-- size of Fixed
+sizeOf d@Desc {dTip=TFixed, dLen=Length1 n} b = checkSize n b
+
+-- size of Spare
+sizeOf d@Desc {dTip=TSpare, dLen=Length1 n} b = do
+    size <- checkSize n b
+    if (B.take size b) /= (B.zeros size) then Nothing
+    else Just size
+
+-- size of Extended
+sizeOf d@Desc {dTip=TExtended, dLen=Length2 n1 n2} b = do
+    size <- checkSize n1 b
+    if (B.index b (size-1)) then dig size
+    else Just size
+    where
+        dig offset = do 
+            size <- checkSize offset b
+            if (B.index b (size-1)) then dig (size+n2)
+            else Just size
+
+-- size of Repetitive
+sizeOf d@Desc {dTip=TRepetitive} b = do
+    s8 <- checkSize 8 b
+    let rep = B.toUnsigned . B.take s8 $ b
+        b' = B.drop s8 b
+    getSubitems rep b' 8
+    where
+        getSubitems :: Int -> B.Bits -> Size -> Maybe Size
+        getSubitems 0 _ size = Just size
+        getSubitems n b size = do
+            itemSize <- sizeOf (d {dTip=TItem}) b
+            getSubitems (n-1) (B.drop itemSize b) (itemSize+size)
+
+-- size of Explicit
+sizeOf d@Desc {dTip=TExplicit} b = do
+    s8 <- checkSize 8 b
+    let val = B.toUnsigned . B.take s8 $ b
+    case val of
+        0 -> Nothing
+        otherwise -> checkSize (8*val) b
+
+-- size of Compound
+sizeOf d@Desc {dTip=TCompound, dItems=items} b' = do
+    b <- B.checkAligned b'
+    (fspec, fspecTotal) <- getFspec b
+    -- TODO: check length of items (must be >= length of fspec)
+    let subitems :: [(String,Desc)]
+        subitems = [(dName dsc,dsc) | (f,dsc) <- zip fspec items, (f==True)]
+        offset = length fspecTotal
+
+    dig subitems (B.drop offset b) offset
+    where
+
+        dig :: [(String,Desc)] -> B.Bits -> Size -> Maybe Size
+        dig [] _ size = Just size
+        dig (x:xs) b size = do
+            itemSize <- sizeOf (snd x) b
+            dig xs (B.drop itemSize b) (itemSize+size)
+
+        getFspec :: B.Bits -> Maybe ([Bool],[Bool])
+        getFspec b = do
+            n <- checkSize 8 b
+            let val = B.unpack . B.take n $ b
+            if (last val == False) then Just ((init val), val)
+            else do
+                (rem, remTotal) <- getFspec (B.drop n b)
+                let rv = (init val) ++ rem
+                    rvTotal = val ++ remTotal
+                Just (rv, rvTotal)
 
 {-
 item :: Desc -> Content -> Item
