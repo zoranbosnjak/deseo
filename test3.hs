@@ -38,7 +38,10 @@ main = do
     let 
         record0 = A.create p048 $ return ()
         
-        record1 = A.create p048 $ do
+        record1a = A.Item p048 $ B.bits 24 0x800102
+        record1b = A.Item p048 $ B.bits 32 0x40010203
+
+        record2 = A.create p048 $ do
                     A.setItem "010" $ A.fromValue 0x0102
 
         {-
@@ -62,12 +65,16 @@ main = do
     print $ A.sizeOf p018_006 $ B.bits 100 0
     print $ A.sizeOf p018_006 $ B.bits 32 0x01000000
     print $ A.sizeOf p018_006 $ B.bits 64 0x0200000000000000
-    print "---"
     print $ A.sizeOf p018 $ B.bits 24 0x800102
 
     print record0
-    print record1
-    -- print record2
+    print $ A.childsComp record0
+    print record1a
+    print $ A.childsComp record1a
+    print record1b
+    print $ A.childsComp record1b
+    print "---"
+    print $ A.unChildsComp p048 . A.childsComp $ record1b
 
     return ()
 

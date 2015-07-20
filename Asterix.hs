@@ -17,7 +17,7 @@ module Asterix
     , getUapByName
     , getUapByData
     -- , decode
-    -- , encode 
+    , encode 
     , DataBlock(..)
     , toDataBlocks
     --, toRecords
@@ -31,6 +31,12 @@ module Asterix
     , fromValue
     , setItem
     , sizeOf
+    , child
+    , childR
+    , childsRep
+    , childsComp
+    , unChildsComp
+    , getFspec
 ) where
 
 import Data.List
@@ -241,16 +247,69 @@ sizeOf d@Desc {dTip=TCompound, dItems=items} b' = do
             itemSize <- sizeOf (snd x) b
             dig xs (B.drop itemSize b) (itemSize+size)
 
-        getFspec :: B.Bits -> Maybe ([Bool],[Bool])
-        getFspec b = do
-            n <- checkSize 8 b
-            let val = B.unpack . B.take n $ b
-            if (last val == False) then Just ((init val), val)
-            else do
-                (rem, remTotal) <- getFspec (B.drop n b)
-                let rv = (init val) ++ rem
-                    rvTotal = val ++ remTotal
-                Just (rv, rvTotal)
+getFspec :: B.Bits -> Maybe ([Bool],[Bool])
+getFspec b = do
+    n <- checkSize 8 b
+    let val = B.unpack . B.take n $ b
+    if (last val == False) then Just ((init val), val)
+    else do
+        (rem, remTotal) <- getFspec (B.drop n b)
+        let rv = (init val) ++ rem
+            rvTotal = val ++ remTotal
+        Just (rv, rvTotal)
+
+-- get subitem
+child :: Name -> Item -> Maybe Item
+child = undefined
+
+-- get deep subitem, like ["010", "SAC"]
+childR :: [Name] -> Item -> Maybe Item
+childR [] item = Just item
+childR (i:is) item = do
+    c <- child i item
+    childR is c
+
+-- get repetitive items
+childsRep :: Item -> Maybe [Item]
+childsRep (Item d@Desc {dTip=TRepetitive} b) = undefined
+
+-- get compound subitems
+childsComp :: Item -> [(Name,Maybe Item)]
+childsComp (Item d@Desc {dTip=TCompound, dItems=items} b) = assert ((length items) >= length fspec) (consume items fspec' (B.drop offset b) [])
+    where
+        (fspec,fspecTotal) = fromMaybe ([],[]) (getFspec b)
+        offset = length fspecTotal
+        fspec' = fspec ++ (repeat False)
+
+        consume :: [Desc] -> [Bool] -> B.Bits -> [(Name, Maybe Item)] -> [(Name, Maybe Item)]
+        consume [] _ _ acc = acc
+        consume (i:is) (f:fs) b acc = (name,item):(consume is fs (B.drop size b) acc) where
+            name = dName i
+            (item,size) = if (f==True) then (Just $ Item i (B.take size b), fromJust $ sizeOf i b)
+                            else (Nothing, 0)
+
+-- recreate compound item from subitems
+unChildsComp :: Desc -> [(Name,Maybe Item)] -> Item
+unChildsComp d@Desc {dTip=TCompound, dItems=items} present = assert (length items == length present) $ Item d bs where
+    bs = B.pack fspecTotal `mappend` (mconcat . map (encode . fromJust) . filter isJust . map snd $ present)
+    fspecTotal
+        | fspec == [] = []
+        | otherwise = concat leading ++ lastOctet
+    leading = map (\l -> l++[True]) (init groups)
+    lastOctet = (last groups) ++ [False]
+    groups = spl fspec
+    spl [] = []
+    spl s =
+        let (a,b) = splitAt 7 s
+        in (fill a):(spl b)
+    fill a = take 7 (a++repeat False)
+    fspec :: [Bool]
+    fspec = strip [isJust . snd $ f | f<-present]
+    strip = reverse . dropWhile (==False) . reverse
+
+-- encode item
+encode :: Item -> B.Bits
+encode (Item _ b) = b
 
 {-
 item :: Desc -> Content -> Item
@@ -261,11 +320,6 @@ item _ _ = undefined
 -- newItem d@Desc {dTip=TItem, dItems=subitems} [items] = undefined
 -- newItem d@Desc {dTip=TCompound, dItems=items} = (Compound . replicate (length items) $ Nothing, d)
 
--- encode items
-encode :: Item -> B.Bits
-encode = undefined
---encode (Item d xs) = mconcat . map encode $ xs
---encode (Fixed d b) = b
 
 -- like decode, but given bits must be exact in size and decoding must be possible
 decodeExact :: Desc -> B.Bits -> Item
