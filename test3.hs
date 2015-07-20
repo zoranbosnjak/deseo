@@ -32,9 +32,6 @@ main = do
         p018_006 = A.getDesc' p018 ["006"]
         p048 = fromJust $ A.getUapByName 48 uaps "uap"
 
-    -- print p018
-    -- print $ A.emptyRecord p018
-
     let 
         record0 = A.create p048 $ return ()
         
@@ -58,19 +55,14 @@ main = do
                     A.setItem "036" $ A.fromValue 0x0102
                     A.setItem "037" $ A.fromValues [("SAC", 0x03), ("SIC", 0x04)]
 
-        {-
-        record3b = A.create p018 $ do
-                    A.setItem "036" $ A.fromValue 0x0102
-                    A.setItem "037" $ A.fromValues [("SAC", 0x03), ("SIC", 0x04)]
+        record4 = A.create p018 $ do
                     A.setItem "006" $ A.fromList [
                                             [("ModeS", 0x010203)]
                                             , [("ModeS", 0x020304)]
-                                        ]
-        record2 = A.create p048 $ do 
-                    A.setItem "130" $ A.fromMap [("SRL", 0x01, "SRR", 0x02)]
-                    return ()
-
-        -}
+                                       ]
+        
+        record5 = A.create p048 $ do 
+                    A.setItem "130" $ A.fromValues [("SRL", 0xaa), ("SRR", 0xbb)]
 
     print $ A.sizeOf p018_036 $ B.bits 100 0
     print $ A.sizeOf p018_036_SAC $ B.bits 100 0
@@ -89,11 +81,12 @@ main = do
     print $ A.unChildsComp p048 . A.childsComp $ record1b
     print $ A.childsComp record1b
     print record2
-    print "---"
     print record3a
     print record3b
     print record3c
     print record3d
+    print record4
+    print record5
 
     return ()
 

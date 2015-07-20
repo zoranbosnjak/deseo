@@ -30,6 +30,7 @@ module Asterix
     , create
     , fromValue
     , fromValues
+    , fromList
     , setItem
     , sizeOf
     , child
@@ -143,7 +144,7 @@ noDesc = Desc {
 
 data Item = Item Desc B.Bits deriving (Show,Eq)
 
--- create item
+-- create item helper functions
 -- f :: Content -> Desc -> Item
 -- if a content is applied to the function, the return
 -- value is a general transform function from Desc -> Item
@@ -157,7 +158,16 @@ fromValues :: Integral a => [(String,a)] -> Desc -> Item
 fromValues values d@Desc {dTip=TItem, dItems=items} = assert (length values == length items) (combine items) where
     l = [assert (dName d'==name) (fromValue val d') | ((name,val),d') <- zip values items]
     combine items = Item d $ mconcat . map encode $ l
--- fromValues values d@Desc {dTip= TODO other types... }
+fromValues values@(v:vs) d@Desc {dTip=TCompound, dItems=items} = create d transform where
+    transforms = map (\(name,val) -> setItem name $ fromValue val) $ values
+    transform = foldr (>>) noChange transforms
+    noChange = state $ \i -> ((), i)
+fromValues values d = undefined -- TODO define function for other types
+
+fromList :: Integral a => [[(String,a)]] -> Desc -> Item
+fromList values d@Desc {dTip=TRepetitive, dItems=items} = Item d (ln `mappend` (combine items)) where
+    ln = assert (length values < 256) (B.bits 8 $ length values)
+    combine items = mconcat . map encode . map (\val -> fromValues val (d {dTip=TItem})) $ values
 
 fromSpare :: Desc -> Item
 fromSpare d@Desc {dTip=TSpare, dLen=Length1 len} = Item d (B.bits len 0)
