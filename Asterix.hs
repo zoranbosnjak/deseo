@@ -29,6 +29,7 @@ module Asterix
     --, toContent
     , create
     , fromValue
+    , fromValues
     , setItem
     , sizeOf
     , child
@@ -143,8 +144,8 @@ noDesc = Desc {
 data Item = Item Desc B.Bits deriving (Show,Eq)
 
 -- create item
--- itemX :: Content -> Desc -> Item
--- if Content is applied to the function, the return
+-- f :: Content -> Desc -> Item
+-- if a content is applied to the function, the return
 -- value is a general transform function from Desc -> Item
 
 fromValue :: Integral a => a -> Desc -> Item
@@ -153,7 +154,10 @@ fromValue val d@Desc {dLen=Length1 len} = case (dTip d) of
     TFixed -> Item d (B.bits len val)
 
 fromValues :: Integral a => [(String,a)] -> Desc -> Item
-fromValues = undefined
+fromValues values d@Desc {dTip=TItem, dItems=items} = assert (length values == length items) (combine items) where
+    l = [assert (dName d'==name) (fromValue val d') | ((name,val),d') <- zip values items]
+    combine items = Item d $ mconcat . map encode $ l
+-- fromValues values d@Desc {dTip= TODO other types... }
 
 fromSpare :: Desc -> Item
 fromSpare d@Desc {dTip=TSpare, dLen=Length1 len} = Item d (B.bits len 0)
@@ -165,14 +169,11 @@ create profile@Desc {dTip=TCompound} transform = execState transform $ emptyReco
 
 -- set subitem to compound item (stateful computation)
 setItem :: String -> (Desc -> Item) -> State Item ()
-setItem name toItem = state $ \(Item dsc@Desc {dTip=TCompound} bs) -> ((),Item dsc newBs) where
-    newBs = newFspec `mappend` (mconcat newSubitems)
-    newFspec = setFspecBit name fspec
-    newSubitems = setOrReplace name subitems
-    (fspec,subitems) = undefined
-
-    setFspecBit = undefined
-    setOrReplace = undefined
+setItem name toItem = state $ \i@(Item dsc@Desc {dTip=TCompound} bs) -> ((),newItem dsc i) where
+    newItem parent i = unChildsComp parent . replace name toItem parent . childsComp $ i
+    replace name toItem parent items = map (\(a,b) -> if a==name then (a, Just item) else (a,b)) items where
+        dsc = fromJust $ getDesc parent [name] 
+        item = toItem dsc
 
 delItem :: String -> State Item ()
 delItem = undefined

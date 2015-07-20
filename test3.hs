@@ -44,8 +44,22 @@ main = do
         record2 = A.create p048 $ do
                     A.setItem "010" $ A.fromValue 0x0102
 
+        record3a = A.create p018 $ do
+                    A.setItem "036" $ A.fromValue 0x0102
+
+        record3b = A.create p018 $ do
+                    A.setItem "037" $ A.fromValue 0x0102
+
+        record3c = A.create p018 $ do
+                    A.setItem "036" $ A.fromValue 0x0102
+                    A.setItem "037" $ A.fromValue 0x0304
+
+        record3d = A.create p018 $ do
+                    A.setItem "036" $ A.fromValue 0x0102
+                    A.setItem "037" $ A.fromValues [("SAC", 0x03), ("SIC", 0x04)]
+
         {-
-        record1 = A.create p018 $ do
+        record3b = A.create p018 $ do
                     A.setItem "036" $ A.fromValue 0x0102
                     A.setItem "037" $ A.fromValues [("SAC", 0x03), ("SIC", 0x04)]
                     A.setItem "006" $ A.fromList [
@@ -72,9 +86,14 @@ main = do
     print record1a
     print $ A.childsComp record1a
     print record1b
-    print $ A.childsComp record1b
-    print "---"
     print $ A.unChildsComp p048 . A.childsComp $ record1b
+    print $ A.childsComp record1b
+    print record2
+    print "---"
+    print record3a
+    print record3b
+    print record3c
+    print record3d
 
     return ()
 
