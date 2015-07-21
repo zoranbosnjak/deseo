@@ -87,6 +87,12 @@ main = do
     print record3d
     print record4
     print record5
+    print $ A.encodeDb $ A.datablock 48 [record5]
+    print $ A.childs . fromJust $ return record2 >>= A.child "010"
+    print $ return record2 >>= A.child "010" >>= A.child "SAC"
+    print $ A.childR ["010","SAC"] record2
+    print $ A.toValue . fromJust $ A.childR ["010","SAC"] record2
+    print "---"
 
     return ()
 

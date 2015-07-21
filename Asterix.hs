@@ -16,26 +16,25 @@ module Asterix
     , Edition(..)
     , getUapByName
     , getUapByData
-    -- , decode
     , encode 
-    , DataBlock(..)
+    , encodeDb
+    , datablock
+    , DataBlock
+    , cat
     , toDataBlocks
-    --, toRecords
+    , toRecords
     , getDesc
     , getDesc'
-    -- , subitem
-    --, item
-    --, Content(..)
-    --, toContent
     , create
     , fromValue
     , fromValues
     , fromList
+    , toValue
     , setItem
     , sizeOf
     , child
+    , childs
     , childR
-    , childsRep
     , childsComp
     , unChildsComp
     , getFspec
@@ -87,6 +86,17 @@ instance Read Edition where
 data DataBlock = DataBlock Category B.Bits
 instance Show DataBlock where
     show (DataBlock cat b) = "DataBlock ("++(show cat)++") len: "++(show . B.length $ b)
+
+cat :: DataBlock -> Category
+cat (DataBlock c _) = c
+
+-- compose datablock
+datablock :: Category -> [Item] -> DataBlock
+datablock cat items = DataBlock cat bs where
+    bs = c `mappend` ln `mappend` records
+    c = B.bits 8 cat
+    ln = B.bits 16 ((B.length records `div` 8) + 3)
+    records = mconcat $ map encode items
 
 toDataBlocks :: B.Bits -> [DataBlock]
 toDataBlocks bs =   if (B.null bs) then []
@@ -171,6 +181,9 @@ fromList values d@Desc {dTip=TRepetitive, dItems=items} = Item d (ln `mappend` (
 
 fromSpare :: Desc -> Item
 fromSpare d@Desc {dTip=TSpare, dLen=Length1 len} = Item d (B.bits len 0)
+
+toValue :: Integral a => Item -> a
+toValue item = B.toUnsigned . encode $ item
 
 -- create record from profile and transform function
 create :: Desc -> State Item () -> Item
@@ -271,7 +284,8 @@ getFspec b = do
 
 -- get subitem
 child :: Name -> Item -> Maybe Item
-child = undefined
+child name i@(Item d@Desc {dTip=TCompound} b) = fromMaybe Nothing . lookup name $ childsComp i
+child name i@(Item d@Desc {dTip=TItem, dItems=items} b) = lookup name $ zip (map dName items) (childs i)
 
 -- get deep subitem, like ["010", "SAC"]
 childR :: [Name] -> Item -> Maybe Item
@@ -280,9 +294,13 @@ childR (i:is) item = do
     c <- child i item
     childR is c
 
--- get repetitive items
-childsRep :: Item -> Maybe [Item]
-childsRep (Item d@Desc {dTip=TRepetitive} b) = undefined
+-- get items
+childs :: Item -> [Item]
+childs (Item d@Desc {dTip=TItem, dItems=items} b) = collect items b [] where
+    collect [] _ acc = reverse acc
+    collect (i:is) b acc = collect is (B.drop size b) $ (Item i (B.take size b)):acc where
+        size = fromJust $ sizeOf i b
+childs (Item d@Desc {dTip=TRepetitive} b) = undefined
 
 -- get compound subitems
 childsComp :: Item -> [(Name,Maybe Item)]
@@ -322,123 +340,25 @@ unChildsComp d@Desc {dTip=TCompound, dItems=items} present = assert (length item
 encode :: Item -> B.Bits
 encode (Item _ b) = b
 
-{-
-item :: Desc -> Content -> Item
-item d@Desc {dTip=TItem, dItems=subitems} c@(CList (IList [items])) = Item d c
-item d@Desc {dTip=TFixed} c@(CBits b) = Fixed d c
-item _ _ = undefined
-
--- newItem d@Desc {dTip=TItem, dItems=subitems} [items] = undefined
--- newItem d@Desc {dTip=TCompound, dItems=items} = (Compound . replicate (length items) $ Nothing, d)
-
-
--- like decode, but given bits must be exact in size and decoding must be possible
-decodeExact :: Desc -> B.Bits -> Item
-decodeExact d b = assert (size==B.length b) item where
-    (item,size) = fromJust $ decode d b
-
--- decode items
-decode :: Desc -> B.Bits -> Maybe (Item, Size)
-
--- decode Item (decode first subitem, decode the rest, then combine)
-decode d@Desc {dTip=TItem, dItems=[]} _ = Just (Item d (CList . IList $ []), 0)
-decode d@Desc {dTip=TItem, dItems=(i:is)} b = do
-    (x,s1) <- decode i b
-    (Item d2 y,s2) <- decode (d {dItems=is}) (B.drop s1 b)
-    let size = case (dLen d) of
-                -- if the size is known, take it
-                (Length1 n) -> n
-                otherwise -> s1+s2
-        CList y'' = y
-        y' = fromIList y''
-    Just (Item d (CList . IList $ (x:y')), size)
-
--- decode Fixed
-decode d@Desc {dTip=TFixed, dLen=Length1 n} b = do
-    size <- checkSize n b
-    Just (Fixed d $ CBits $ B.take size b, size)
-
--- decode Spare
-decode d@Desc {dTip=TSpare, dLen=Length1 n} b = do
-    size <- checkSize n b
-    if (B.take size b) /= (B.zeros size) then Nothing
-    else Just (Spare d (CInt size), size)
-
--- decode Extended
-decode d@Desc {dTip=TExtended, dLen=Length2 n1 n2} b = do
-    size <- checkSize n1 b
-    if (B.index b (size-1)) then dig size
-    else Just (fetch size, size)
-        where
-            fetch size = Extended d . CData . Raw . B.take size $ b
-            dig offset = do 
-                size <- checkSize offset b
-                if (B.index b (size-1)) then dig (size+n2)
-                else Just (fetch size, size)
-
--- decode Repetitive
-decode d@Desc {dTip=TRepetitive} b = do
-    s8 <- checkSize 8 b
-    let rep = B.toUnsigned . B.take s8 $ b
-        b' = B.drop s8 b
-    (items, size) <- decodeSubitems rep b' [] 8
-    Just (Repetitive d (CList . IList . reverse $ items), calcSize size rep) where
-        calcSize size rep = case (dLen d) of
-            Length1 a -> (8+rep*a)
-            otherwise -> size
-        decodeSubitems :: Int -> B.Bits -> [Item] -> Size -> Maybe ([Item], Size)
-        decodeSubitems 0 _ acc size = Just (acc, size)
-        decodeSubitems n b acc size = do
-            -- decode single group of items as TItem
-            (item, itemSize) <- decode (d {dTip=TItem}) b
-            decodeSubitems (n-1) (B.drop itemSize b) (item:acc) (itemSize+size)
-
--- decode Explicit
-decode d@Desc {dTip=TExplicit} b = do
-    s8 <- checkSize 8 b
-    let val = B.toUnsigned . B.take s8 $ b
-    case val of
-        0 -> Nothing
-        otherwise -> do
-            size <- checkSize (8*val) b
-            Just (Explicit d . CBits . B.take size $ b, size)
-
--- decode Compound
-decode d@Desc {dTip=TCompound, dItems=items} b' = do
-    b <- B.checkAligned b'
-    (fspec, fspecTotal) <- getFspec b
-    -- TODO: check length of items (must be >= length of fspec)
-    let subitems :: [(String,Desc)]
-        subitems = [(dName dsc,dsc) | (f,dsc) <- zip fspec items, (f==True)]
-        offset = length fspecTotal
-
-    (items, size) <- dig subitems (B.drop offset b) [] offset
-    Just (Compound d (CMap . IMap $ items), size) where
-
-        dig :: [(String,Desc)] -> B.Bits -> [(String,Item)] -> Size -> Maybe ([(String,Item)], Size)
-        dig [] _ acc size = Just (acc, size)
-        dig (x:xs) b acc size = do
-            (item, itemSize) <- decode (snd x) b
-            let item' = (fst x, item)
-            dig xs (B.drop itemSize b) (item':acc) (itemSize+size)
-
-        getFspec :: B.Bits -> Maybe ([Bool],[Bool])
-        getFspec b = do
-            n <- checkSize 8 b
-            let val = B.unpack . B.take n $ b
-            if (last val == False) then Just ((init val), val)
-            else do
-                (rem, remTotal) <- getFspec (B.drop n b)
-                let rv = (init val) ++ rem
-                    rvTotal = val ++ remTotal
-                Just (rv, rvTotal)
--}
+encodeDb :: DataBlock -> B.Bits
+encodeDb (DataBlock _ b) = b
 
 -- check that requested number of bits are available
 checkSize :: Int -> B.Bits -> Maybe Int
 checkSize n b
     | B.length b < n = Nothing
     | otherwise = Just n
+
+-- split datablock to records
+toRecords :: [(Category, [(String, Desc)])] -> DataBlock -> Maybe [Item]
+toRecords profiles (DataBlock cat bs) = getRecord profiles cat bs [] where
+    getRecord profiles cat bs acc = 
+        if (B.null bs) then Just . reverse $ acc
+        else do
+            dsc <- getUapByData cat profiles bs
+            size <- sizeOf dsc bs
+            item <- return $ Item dsc (B.take size bs)
+            getRecord profiles cat (B.drop size bs) (item:acc)
 
 -- read xml (may fail in case of errors in xml)
 getCategoryDescription :: String -> (Category, Edition, [(String, Desc)])
@@ -547,28 +467,6 @@ getUapByName cat uaps name = lookup cat uaps >>= lookup name
 getUapByData :: Category -> [(Category, [(String, Desc)])] -> B.Bits -> Maybe Desc
 getUapByData 1 uaps b = undefined
 getUapByData cat uaps _ = lookup cat uaps >>= lookup "uap"
-
-{-
--- split datablock to records
-toRecords :: [(Category, [(String, Desc)])] -> DataBlock -> Maybe [Item]
-toRecords profiles (DataBlock cat bs) = getRecord profiles cat bs [] where
-    getRecord profiles cat bs acc = 
-        if (B.null bs) then Just . reverse $ acc
-        else do
-            dsc <- getUapByData cat profiles bs
-            (item,size) <- decode dsc bs
-            getRecord profiles cat (B.drop size bs) (item:acc)
-
-subitem :: [String] -> (Item, Desc) -> Maybe (Item, Desc)
-subitem [] (item, dsc) = Just (item,dsc)
-subitem (x:xs) (item, dsc) = do
-    ix <- elemIndex x (map dName (dItems dsc))
-    item2 <- getSubItem item ix
-    let dsc2 = (dItems dsc) !! ix
-    subitem xs (item2, dsc2) where
-        getSubItem (Item items) ix = Just (items !! ix)
-        getSubItem (Compound maybeItems) ix = maybeItems !! ix
--}  
 
 getDesc :: Desc -> [String] -> Maybe Desc
 getDesc d [] = Just d
