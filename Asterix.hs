@@ -30,6 +30,7 @@ module Asterix
     , fromValues
     , fromList
     , toValue
+    , toName
     , setItem
     , sizeOf
     , child
@@ -185,6 +186,9 @@ fromSpare d@Desc {dTip=TSpare, dLen=Length1 len} = Item d (B.bits len 0)
 toValue :: Integral a => Item -> a
 toValue item = B.toUnsigned . encode $ item
 
+toName :: Item -> String
+toName (Item d _) = dName d
+
 -- create record from profile and transform function
 create :: Desc -> State Item () -> Item
 create profile@Desc {dTip=TCompound} transform = execState transform $ emptyRecord profile where
@@ -300,6 +304,16 @@ childs (Item d@Desc {dTip=TItem, dItems=items} b) = collect items b [] where
     collect [] _ acc = reverse acc
     collect (i:is) b acc = collect is (B.drop size b) $ (Item i (B.take size b)):acc where
         size = fromJust $ sizeOf i b
+
+-- calculate childs of extended by first remove FX bits out of b, then handle like TItem
+childs (Item d@Desc {dTip=TExtended, dLen=Length2 n1 n2, dItems=items} b) = childs $ Item d {dTip=TItem, dLen=Length0} b' 
+    where
+        b' = first `mappend` mconcat (rest [] (B.drop n1 b))
+        first = B.take (n1-1) b
+        rest acc b
+            | B.null b = acc
+            | otherwise = (B.take (n2-1) b):(rest acc (B.drop n2 b))
+
 childs (Item d@Desc {dTip=TRepetitive} b) = undefined
 
 -- get compound subitems

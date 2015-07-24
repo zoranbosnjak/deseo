@@ -64,6 +64,8 @@ main = do
         record5 = A.create p048 $ do 
                     A.setItem "130" $ A.fromValues [("SRL", 0xaa), ("SRR", 0xbb)]
 
+        record6 = A.Item p048 $ B.bits 24 0x20FF8E
+
     print $ A.sizeOf p018_036 $ B.bits 100 0
     print $ A.sizeOf p018_036_SAC $ B.bits 100 0
     print $ A.sizeOf p018_036_SAC $ B.bits 1 0
@@ -92,6 +94,8 @@ main = do
     print $ return record2 >>= A.child "010" >>= A.child "SAC"
     print $ A.childR ["010","SAC"] record2
     print $ A.toValue . fromJust $ A.childR ["010","SAC"] record2
+    print $ A.childs . fromJust $ return record6 >>= A.child "020"
+    print $ map A.toValue $ A.childs . fromJust $ return record6 >>= A.child "020"
     print "---"
 
     return ()
