@@ -30,6 +30,7 @@ main = do
         p018_036 = A.getDesc' p018 ["036"]
         p018_036_SAC = A.getDesc' p018 ["036", "SAC"]
         p018_006 = A.getDesc' p018 ["006"]
+        p018_008 = A.getDesc' p018 ["008"]
         p048 = fromJust $ A.getUapByName 48 uaps "uap"
 
     let 
@@ -66,6 +67,9 @@ main = do
 
         record6 = A.Item p048 $ B.bits 24 0x20FF8E
 
+        item7a = A.Item p018_008 $ B.bits 8 0x00
+        item7b = A.Item p018_008 $ B.bits 16 0x0100
+
     print $ A.sizeOf p018_036 $ B.bits 100 0
     print $ A.sizeOf p018_036_SAC $ B.bits 100 0
     print $ A.sizeOf p018_036_SAC $ B.bits 1 0
@@ -96,6 +100,8 @@ main = do
     print $ A.toValue . fromJust $ A.childR ["010","SAC"] record2
     print $ A.childs . fromJust $ return record6 >>= A.child "020"
     print $ map A.toValue $ A.childs . fromJust $ return record6 >>= A.child "020"
+    print $ A.childs item7a
+    print $ A.childs item7b
     print "---"
 
     return ()
