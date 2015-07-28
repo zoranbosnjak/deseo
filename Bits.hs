@@ -25,6 +25,7 @@ module Bits
     , toByteString
 ) where
 
+import Control.Monad
 import qualified Prelude as P
 import Prelude hiding (length, any, toInteger, take, drop, null, (!!))
 import Data.Monoid
@@ -32,8 +33,11 @@ import qualified Data.ByteString as S
 import Data.Word
 import qualified Data.Bits as B
 import Data.List (foldl', foldl1')
+import Data.Maybe
 
 import Debug.Trace
+
+import Test.QuickCheck
 
 dump = flip trace
 
@@ -55,6 +59,9 @@ instance Show Bits where
 instance Monoid Bits where
     mempty = Bits []
     Bits a `mappend` Bits b = Bits (a `mappend` b)
+
+instance Arbitrary Bits where
+    arbitrary = liftM Bits arbitrary
 
 length (Bits a) = P.length a
 take n (Bits a) = Bits $ P.take n a
@@ -105,7 +112,41 @@ toByteString bs = do
         toWord :: [Bool] -> Word8
         toWord s = sum $ zipWith (*) (map (2^) [7,6..0]) (map boolVal s)
 
+-- run the tests
 main :: IO ()
 main = do
-    return ()
+    putStrLn "quick check test run..."
+
+    quickCheck testPack
+    quickCheck testPack2
+    quickCheck testByteString
+    quickCheck testUnsigned
+    quickCheck testCombine
+    quickCheck testZeros
+
+    where
+
+    testPack :: [Bool] -> Bool
+    testPack s =    ((unpack . pack $ s) == s)
+                    && (pack s) == (pack . unpack . pack $ s)
+
+    testPack2 :: Bits -> Bool
+    testPack2 b = (pack . unpack $ b) == b
+
+    testByteString :: [Word8] -> Bool
+    testByteString s = (fromJust . toByteString . fromByteString . S.pack $ s) == (S.pack s)
+
+    testUnsigned :: NonNegative Int -> Bool
+    testUnsigned (NonNegative val) = toUnsigned (bits (n+1) val) == val where
+        n = ceiling . logBase 2 $ fromIntegral val
+
+    testCombine :: Bits -> Bits -> Bool
+    testCombine a b =   (pack (unpack a ++ unpack b) == c)
+                        && (take (length a) c == a)
+                        && (drop (length a) c == b)
+                        where c = a `mappend` b
+    
+    testZeros :: Property
+    testZeros = forAll (choose (0,100)) $ \n -> 
+         (toUnsigned . zeros $ n) == 0
 
