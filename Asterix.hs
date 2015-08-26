@@ -26,6 +26,7 @@ module Asterix
     , getDesc
     , getDesc'
     , create
+    , fromRaw
     , fromValue
     , fromValues
     , fromList
@@ -159,6 +160,12 @@ data Item = Item Desc B.Bits deriving (Show,Eq)
 -- f :: Content -> Desc -> Item
 -- if a content is applied to the function, the return
 -- value is a general transform function from Desc -> Item
+
+fromRaw :: B.Bits -> Desc -> Item
+fromRaw val d@Desc {dTip=TExplicit} = assert (ln <= 255) (Item d encode) where
+    ln = assert (b==0) (a+1)
+    (a,b) = divMod (B.length val) 8
+    encode = (B.bits 8 ln) `mappend` val
 
 fromValue :: Integral a => a -> Desc -> Item
 fromValue val d@Desc {dLen=Length1 len} = case (dTip d) of
