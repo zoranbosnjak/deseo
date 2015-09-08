@@ -32,6 +32,8 @@ main = do
         p018_006 = A.getDesc' p018 ["006"]
         p018_008 = A.getDesc' p018 ["008"]
         p048 = fromJust $ A.getUapByName 48 uaps "uap"
+        p062 = fromJust $ A.getUapByName 62 uaps "uap"
+        p062_105_LAT = A.getDesc' p062 ["105","LAT"]
 
     let 
         record0 = A.create p048 $ return ()
@@ -102,6 +104,7 @@ main = do
     print $ map A.toValue $ A.childs . fromJust $ return record6 >>= A.child "020"
     print $ A.childs item7a
     print $ A.childs item7b
+    print $ p062_105_LAT
     print "---"
 
     return ()

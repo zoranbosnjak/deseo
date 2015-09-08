@@ -56,6 +56,7 @@ import qualified Data.Map as Map
 import qualified Text.XML.Light as X
 
 import qualified Bits as B
+import Expression
 
 import Debug.Trace
 
@@ -122,12 +123,26 @@ data Tip = TItem
 
 data Length = Length0 | Length1 Int | Length2 Int Int deriving (Show, Read, Eq)
 
+type Lsb = Double
+type Unit = String
+type Min = Double
+type Max = Double
+
+data Value = 
+    VRaw
+    | VString
+    | VDecimal Lsb (Maybe Unit) (Maybe Min) (Maybe Max)
+    | VUnsignedDecimal Lsb (Maybe Unit) (Maybe Min) (Maybe Max)
+    | VInteger (Maybe Unit) (Maybe Min) (Maybe Max)
+    | VUnsignedInteger (Maybe Unit) (Maybe Min) (Maybe Max)
+    deriving (Eq, Show)
+
 data Desc = Desc {  dName       :: String
                     , dTip      :: Tip
                     , dDsc      :: String
                     , dLen      :: Length
                     , dItems    :: [Desc]
-
+                    , dValue    :: Value
                     -- TODO: convert functions
                     {-
                         use:
@@ -144,7 +159,7 @@ data Desc = Desc {  dName       :: String
 instance NFData Desc
 
 instance Show Desc where
-    show d = (show . dTip $ d) ++ " (" ++ (dName d) ++ "), " ++ (show . dLen $ d)
+    show d = (show . dTip $ d) ++ " (" ++ (dName d) ++ "), " ++ (show . dLen $ d) ++ ", " ++ (show $ dValue d)
 
 noDesc = Desc {
     dName = ""
@@ -152,6 +167,7 @@ noDesc = Desc {
     , dDsc = ""
     , dLen = Length0
     , dItems = []
+    , dValue = VRaw
 }
 
 data Item = Item Desc B.Bits deriving (Show,Eq)
@@ -416,6 +432,7 @@ getCategoryDescription s = (cat, ed, dsc) where
                 , dDsc = "Category " ++ (show cat)
                 , dLen = Length0
                 , dItems = force uapItems
+                , dValue = VRaw
             }
         return (uapName, topLevel)
 
@@ -469,7 +486,24 @@ getCategoryDescription s = (cat, ed, dsc) where
             , dLen = readLength $ fromMaybe "" (getChild e "len" >>= return . X.strContent)
             , dItems = map readItem . fromMaybe [] $ do
                 getChild e "items" >>= return . X.elChildren
+            , dValue = getValueTip e
         }
+
+        getValueTip :: X.Element -> Value
+        getValueTip e = fromMaybe VRaw $ do
+            conv <- getChild e "convert"
+            tip <- getChild conv "type" >>= return . X.strContent
+            let lsb = getChild conv "lsb" >>= return . fromJust . eval . X.strContent
+                unit = getChild conv "unit" >>= return . X.strContent
+                min = getChild conv "min" >>= return . fromJust . eval . X.strContent
+                max = getChild conv "max" >>= return . fromJust . eval . X.strContent
+            case tip of
+                "string" -> Just VString
+                "decimal" -> Just $ VDecimal (fromJust lsb) unit min max
+                "unsigned decimal" -> Just $ VUnsignedDecimal (fromJust lsb) unit min max
+                "integer" -> Just $ VInteger unit min max
+                "unsigned integer" -> Just $ VUnsignedInteger unit min max
+                _ -> Nothing
 
 getCategoryDescriptionsAll :: [String] -> [(Category, [(Edition, [(String, Desc)])])]
 getCategoryDescriptionsAll ss = [(cat, editions cat) | cat <- cats] where
