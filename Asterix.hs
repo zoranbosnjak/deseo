@@ -40,6 +40,16 @@ module Asterix
     , childsComp
     , unChildsComp
     , getFspec
+
+    -- converters
+    , getRaw
+    , getString
+    , getFloating
+    , getInteger
+    , setRaw
+    , setString
+    , setFloating
+    , setInteger
 ) where
 
 import Data.List
@@ -143,18 +153,46 @@ data Desc = Desc {  dName       :: String
                     , dLen      :: Length
                     , dItems    :: [Desc]
                     , dValue    :: Value
-                    -- TODO: convert functions
-                    {-
-                        use:
-                            class Value
-                                toValue
-                                fromValue
-
-                        see:
-                            http://book.realworldhaskell.org/read/writing-a-library-working-with-json-data.html
-                            http://book.realworldhaskell.org/read/using-typeclasses.html
-                    -}
                  } deriving (Eq)
+
+-- convert functions: Item -> Maybe natural value
+getRaw :: Item -> Maybe B.Bits
+getRaw = Just . encode
+
+getString :: Item -> Maybe String
+getString = undefined
+
+getFloating item = do
+    let raw lsb b = lsb * B.toUnsigned b
+        chk Nothing _ val = Just val
+        chk (Just limit) cmp val
+            | val `cmp` limit = Nothing
+            | otherwise = Just val
+        plus val
+            | val >= 0 = Just val
+            | otherwise = Nothing
+    case item of
+        Item (d@Desc {dValue=VDecimal lsb unit mmin mmax}) b -> do
+            return (raw lsb b) >>= chk mmin (<) >>= chk mmax (>)
+        Item (d@Desc {dValue=VUnsignedDecimal lsb unit mmin mmax}) b -> do
+            return (raw lsb b) >>= plus >>= chk mmin (<) >>= chk mmax (>)
+        _ -> Nothing
+
+getInteger :: Integral a => Item -> Maybe a
+getInteger = undefined
+
+-- convert functions: natural value -> Maybe Item
+setRaw :: B.Bits -> Maybe Item
+setRaw = undefined
+
+setString :: String -> Maybe Item
+setString = undefined
+
+setFloating :: Real a => a -> Maybe Item
+setFloating = undefined
+
+setInteger :: Integral a => a -> Maybe Item
+setInteger = undefined
 
 instance NFData Desc
 
@@ -187,6 +225,8 @@ fromValue :: Integral a => a -> Desc -> Item
 fromValue val d@Desc {dLen=Length1 len} = case (dTip d) of
     TItem -> Item d (B.bits len val)
     TFixed -> Item d (B.bits len val)
+fromValue val d@Desc {dTip=TCompound} = undefined
+    -- TODO: take value, assume length is 8-bit aligned value, decode, encode, check
 
 fromValues :: Integral a => [(String,a)] -> Desc -> Item
 fromValues values d@Desc {dTip=TItem, dItems=items} = assert (length values == length items) (combine items) where

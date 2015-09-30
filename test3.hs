@@ -72,6 +72,21 @@ main = do
         item7a = A.Item p018_008 $ B.bits 8 0x00
         item7b = A.Item p018_008 $ B.bits 16 0x0100
 
+        record8 = A.create p062 $ do
+                    {-
+                        /105/LAT Fixed (32) 008238ca -> 45.7811129093 deg
+                        /105/LON Fixed (32) 001d6da2 -> 10.3458702564 deg
+                        /070 Fixed (24) 2dbacc -> 23413.59375 s
+                        /290 Compound (32) 70ff1010
+                            /290/PSR Fixed (8) ff
+                            /290/SSR Fixed (8) 10
+                            /290/MDS Fixed (8) 10
+                    -}
+                    A.setItem "105" $ A.fromValues [("LAT", 0X008238ca), ("LON", 0x001d6da2)]
+                    A.setItem "070" $ A.fromValue 0x2dbacc
+                    -- A.setItem "290" $ A.fromValue 0x70ff1010
+                    -- A.setItem "290" $ A.fromValues [("PSR", 0xff), ("SSR", 0x10), ("MDS", 0x10)]
+
     print $ A.sizeOf p018_036 $ B.bits 100 0
     print $ A.sizeOf p018_036_SAC $ B.bits 100 0
     print $ A.sizeOf p018_036_SAC $ B.bits 1 0
@@ -106,6 +121,14 @@ main = do
     print $ A.childs item7b
     print $ p062_105_LAT
     print "---"
+    print record8
+    print $ return record8 >>= A.child "105" >>= A.child "LAT"
+    print $ return record8 >>= A.child "105" >>= A.child "LAT" >>= A.getFloating
+    print $ return record8 >>= A.child "105" >>= A.child "LON" >>= A.getFloating
+    print $ return record8 >>= A.child "070" >>= A.getFloating
+    print $ return record8 >>= A.child "070" >>= A.getRaw
+    --print $ return record8 >>= A.child "290"
+    --print $ return record8 >>= A.child "290" >>= A.getRaw
 
     return ()
 
