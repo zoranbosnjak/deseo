@@ -1,0 +1,21 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+
+<category cat="000" edition="0.0">
+    <dsc>Dummy Asterix Category, for test purposes only</dsc>
+    <items>
+
+        <item name="010">
+            <dsc>Data Source Identifier</dsc>
+            <items>
+                <item name="SAC" type="Fixed"><len>8</len></item>
+                <item name="SIC" type="Fixed"><len>8</len></item>
+            </items>
+        </item>
+
+    <uaps>
+        <uap>
+            <item>010</item>
+        </uap>
+    </uaps>
+</category>
+
