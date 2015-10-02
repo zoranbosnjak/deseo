@@ -1,4 +1,3 @@
-
 {-
 
 Bit string manipulation
@@ -8,7 +7,7 @@ Author: Zoran Bosnjak (Sloveniacontrol)
 
 -}
 
-module Bits
+module Data.BitString
 (   Bits
     , bits
     , length
@@ -23,6 +22,7 @@ module Bits
     , toUnsigned
     , fromByteString
     , toByteString
+    , main -- run unit tests
 ) where
 
 import Control.Monad
@@ -32,20 +32,16 @@ import Data.Monoid
 import qualified Data.ByteString as S
 import Data.Word
 import qualified Data.Bits as B
-import Data.List (foldl', foldl1')
+import Data.List (foldl1')
 import Data.Maybe
 
-import Debug.Trace
-
 import Test.QuickCheck
-
-dump = flip trace
 
 data Bits = Bits [Bool] 
                 deriving (Eq)
 
 instance Show Bits where
-    show (Bits b) = "Bits " ++ disp b where
+    show (Bits bb) = "Bits " ++ disp bb where
         disp [] = ""
         disp x = foldl1' (\a b -> a++" "++b) . spl . map f $ x
         f True = '1'
@@ -63,24 +59,38 @@ instance Monoid Bits where
 instance Arbitrary Bits where
     arbitrary = liftM Bits arbitrary
 
+length :: Bits -> Int
 length (Bits a) = P.length a
+
+take :: Int -> Bits -> Bits
 take n (Bits a) = Bits $ P.take n a
+
+drop :: Int -> Bits -> Bits
 drop n (Bits a) = Bits $ P.drop n a
+
+index :: Bits -> Int -> Bool
 index (Bits b) n = (P.!!) b n
+
+pack :: [Bool] -> Bits
 pack = Bits
+
+unpack :: Bits -> [Bool]
 unpack (Bits b) = b
+
+null :: Bits -> Bool
 null (Bits b) = P.null b
 
 -- generate bitstring
 bits :: Integral a => Int -> a -> Bits
 bits n val = Bits . map toBool $ f n val [] where
     f 0 _ acc = acc
-    f n val acc = f (n-1) a (b:acc) where
-        (a,b) = divMod val 2
+    f n' val' acc = f (n'-1) a (b:acc) where
+        (a,b) = divMod val' 2
     toBool 0 = False
-    toBool 1 = True
+    toBool _ = True
 
-zeros n = bits n 0
+zeros :: Int -> Bits
+zeros n = bits n (0::Integer)
 
 -- is byte aligned
 checkAligned :: Bits -> Maybe Bits
@@ -96,7 +106,7 @@ boolVal True = 1
 -- convert bits to unsigned number
 toUnsigned :: Num a => Bits -> a
 toUnsigned (Bits b) = sum . zipWith (*) factors . map boolVal . reverse $ b where
-    factors = map (2^) [0..]
+    factors = map (2^) ([0..]::[Int])
 
 fromByteString :: S.ByteString -> Bits
 fromByteString = Bits . concatMap octet . S.unpack where
@@ -110,7 +120,7 @@ toByteString bs = do
         break8 [] = [] 
         break8 s = a : break8 b where (a,b) = splitAt 8 s
         toWord :: [Bool] -> Word8
-        toWord s = sum $ zipWith (*) (map (2^) [7,6..0]) (map boolVal s)
+        toWord s = sum $ zipWith (*) (map (2^) ([7,6..0]::[Int])) (map boolVal s)
 
 -- run the tests
 main :: IO ()
@@ -138,7 +148,7 @@ main = do
 
     testUnsigned :: NonNegative Int -> Bool
     testUnsigned (NonNegative val) = toUnsigned (bits (n+1) val) == val where
-        n = ceiling . logBase 2 $ fromIntegral val
+        n = ceiling . logBase (2 :: Double) $ fromIntegral val
 
     testCombine :: Bits -> Bits -> Bool
     testCombine a b =   (pack (unpack a ++ unpack b) == c)
@@ -148,5 +158,5 @@ main = do
     
     testZeros :: Property
     testZeros = forAll (choose (0,100)) $ \n -> 
-         (toUnsigned . zeros $ n) == 0
+         (toUnsigned . zeros $ n) == (0 :: Integer)
 

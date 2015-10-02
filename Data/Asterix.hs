@@ -6,7 +6,7 @@ Author: Zoran Bosnjak (Sloveniacontrol)
 
 -}
 
-module Asterix
+module Data.Asterix
 (   Tip(..)
     , Item(..)
     , Desc(..)
@@ -20,7 +20,7 @@ module Asterix
     , encodeDb
     , datablock
     , DataBlock
-    , cat
+    , dbCat
     , toDataBlocks
     , toRecords
     , getDesc
@@ -50,6 +50,8 @@ module Asterix
     , setString
     , setFloating
     , setInteger
+
+    ,main
 ) where
 
 import Data.List
@@ -65,12 +67,8 @@ import qualified Data.Map as Map
 
 import qualified Text.XML.Light as X
 
-import qualified Bits as B
-import Expression
-
-import Debug.Trace
-
-dump = flip trace
+import qualified Data.BitString as B
+import Data.Asterix.Expression
 
 type Category = Int
 type Name = String
@@ -100,8 +98,8 @@ data DataBlock = DataBlock Category B.Bits
 instance Show DataBlock where
     show (DataBlock cat b) = "DataBlock ("++(show cat)++") len: "++(show . B.length $ b)
 
-cat :: DataBlock -> Category
-cat (DataBlock c _) = c
+dbCat :: DataBlock -> Category
+dbCat (DataBlock c _) = c
 
 -- compose datablock
 datablock :: Category -> [Item] -> DataBlock
@@ -285,19 +283,22 @@ sizeOf d@Desc {dTip=TFixed, dLen=Length1 n} b = checkSize n b
 -- size of Spare
 sizeOf d@Desc {dTip=TSpare, dLen=Length1 n} b = do
     size <- checkSize n b
-    if (B.take size b) /= (B.zeros size) then Nothing
-    else Just size
+    if (B.take size b) /= (B.zeros size) 
+        then Nothing
+        else Just size
 
 -- size of Extended
 sizeOf d@Desc {dTip=TExtended, dLen=Length2 n1 n2} b = do
     size <- checkSize n1 b
-    if (B.index b (size-1)) then dig size
-    else Just size
+    if (B.index b (size-1)) 
+        then dig size
+        else Just size
     where
         dig offset = do 
             size <- checkSize offset b
-            if (B.index b (size-1)) then dig (size+n2)
-            else Just size
+            if (B.index b (size-1)) 
+                then dig (size+n2)
+                else Just size
 
 -- size of Repetitive
 sizeOf d@Desc {dTip=TRepetitive} b = do
@@ -342,12 +343,13 @@ getFspec :: B.Bits -> Maybe ([Bool],[Bool])
 getFspec b = do
     n <- checkSize 8 b
     let val = B.unpack . B.take n $ b
-    if (last val == False) then Just ((init val), val)
-    else do
-        (rem, remTotal) <- getFspec (B.drop n b)
-        let rv = (init val) ++ rem
-            rvTotal = val ++ remTotal
-        Just (rv, rvTotal)
+    if (last val == False) 
+        then Just ((init val), val)
+        else do
+            (rem, remTotal) <- getFspec (B.drop n b)
+            let rv = (init val) ++ rem
+                rvTotal = val ++ remTotal
+            Just (rv, rvTotal)
 
 -- get subitem
 child :: Name -> Item -> Maybe Item
@@ -389,7 +391,7 @@ childs (Item d@Desc {dTip=TExtended, dLen=Length2 n1 n2, dItems=items} b) = coll
                     (Just size) = sizeOf i b
 
 -- get childs of repetitive item
-childs (Item d@Desc {dTip=TRepetitive} b) = undefined
+childs (Item Desc {dTip=TRepetitive} _) = undefined
 
 -- get compound subitems
 childsComp :: Item -> [(Name,Maybe Item)]
@@ -405,6 +407,7 @@ childsComp (Item d@Desc {dTip=TCompound, dItems=items} b) = assert ((length item
             name = dName i
             (item,size) = if (f==True) then (Just $ Item i (B.take size b), fromJust $ sizeOf i b)
                             else (Nothing, 0)
+childsComp _ = undefined
 
 -- recreate compound item from subitems
 unChildsComp :: Desc -> [(Name,Maybe Item)] -> Item
@@ -424,6 +427,7 @@ unChildsComp d@Desc {dTip=TCompound, dItems=items} present = assert (length item
     fspec :: [Bool]
     fspec = strip [isJust . snd $ f | f<-present]
     strip = reverse . dropWhile (==False) . reverse
+unChildsComp _ _ = undefined
 
 -- encode item
 encode :: Item -> B.Bits
@@ -441,31 +445,31 @@ checkSize n b
 -- split datablock to records
 toRecords :: [(Category, [(String, Desc)])] -> DataBlock -> Maybe [Item]
 toRecords profiles (DataBlock cat bs) = getRecord profiles cat bs [] where
-    getRecord profiles cat bs acc = 
-        if (B.null bs) then Just . reverse $ acc
+    getRecord profiles' cat' bs' acc = 
+        if (B.null bs') then Just . reverse $ acc
         else do
-            dsc <- getUapByData cat profiles bs
-            size <- sizeOf dsc bs
-            item <- return $ Item dsc (B.take size bs)
-            getRecord profiles cat (B.drop size bs) (item:acc)
+            dsc <- getUapByData cat' profiles' bs'
+            size <- sizeOf dsc bs'
+            item <- return $ Item dsc (B.take size bs')
+            getRecord profiles' cat' (B.drop size bs') (item:acc)
 
 -- read xml (may fail in case of errors in xml)
 getCategoryDescription :: String -> (Category, Edition, [(String, Desc)])
-getCategoryDescription s = (cat, ed, dsc) where
-    name s = X.blank_name {X.qName=s}
+getCategoryDescription s = (cat, ed, dscr) where
+    name s' = X.blank_name {X.qName=s'}
     elements = X.onlyElems . X.parseXML $ s
     category = head . filter (\e -> (X.qName . X.elName $ e) == "category") $ elements
     cat = getAttr category "cat"
     ed = getAttr category "edition"
     items = map (\i -> (dName (readItem i), readItem i)) . X.elChildren . fromJust . getChild category $ "items"
-    dsc = do
+    dscr = do
         uap <- X.elChildren . fromJust . getChild category $ "uaps"
         let uapName = X.qName . X.elName $ uap
             uapItems = do 
                 item <- map X.strContent . X.elChildren $ uap
                 return $ case item of
                     "" -> noDesc
-                    otherwise -> fromJust $ lookup item items
+                    _ -> fromJust $ lookup item items
             topLevel = Desc {
                 dName = ""
                 , dTip = TCompound
@@ -494,7 +498,7 @@ getCategoryDescription s = (cat, ed, dsc) where
     recalculateLen dsc = fromMaybe Length0 (total dsc >>= Just . Length1) where
         total :: Desc -> Maybe Size
         total Desc {dLen=Length1 a} = Just a
-        total Desc {dLen=Length2 a b} = Nothing
+        total Desc {dLen=Length2 _ _} = Nothing
         total Desc {dItems=[]} = Just 0
         total dsc@Desc {dItems=(i:is)} = do
             x <- total i
@@ -502,24 +506,24 @@ getCategoryDescription s = (cat, ed, dsc) where
             Just (x + rest)
     
     readItem :: X.Element -> Desc
-    readItem e = f dsc where
+    readItem e = f dsc' where
 
         -- check description, recalculate length
         f :: Desc -> Desc
 
-        f dsc@Desc {dTip=TItem, dLen=Length0, dItems=items@(i:is)} =
+        f dsc@Desc {dTip=TItem, dLen=Length0, dItems=(_:_)} =
             dsc {dLen=recalculateLen dsc}
         f dsc@Desc {dTip=TFixed, dLen=Length1 _, dItems=[]} = dsc
         f dsc@Desc {dTip=TSpare, dLen=Length1 _, dItems=[]} = dsc
         f dsc@Desc {dTip=TExtended, dLen=Length2 _ _} = dsc
-        f dsc@Desc {dTip=TRepetitive, dLen=Length0, dItems=items@(i:is)} = 
+        f dsc@Desc {dTip=TRepetitive, dLen=Length0, dItems=(_:_)} = 
             dsc {dLen=recalculateLen dsc}
         f dsc@Desc {dTip=TExplicit, dLen=Length0, dItems=[]} = dsc
-        f dsc@Desc {dTip=TCompound, dLen=Length0, dItems=items@(i:is)} = dsc
+        f dsc@Desc {dTip=TCompound, dLen=Length0, dItems=(_:_)} = dsc
         f x = error $ "error in description: " ++ (dName x)
 
         -- get all elements
-        dsc = Desc {
+        dsc' = Desc {
             dName = fromJust . X.findAttr (name "name") $ e
             , dTip = read . ("T"++) . fromMaybe "Item" . X.findAttr (name "type") $ e
             , dDsc = fromMaybe "" (getChild e "dsc" >>= return . X.strContent)
@@ -530,32 +534,32 @@ getCategoryDescription s = (cat, ed, dsc) where
         }
 
         getValueTip :: X.Element -> Value
-        getValueTip e = fromMaybe VRaw $ do
-            conv <- getChild e "convert"
+        getValueTip el = fromMaybe VRaw $ do
+            conv <- getChild el "convert"
             tip <- getChild conv "type" >>= return . X.strContent
             let lsb = getChild conv "lsb" >>= return . fromJust . eval . X.strContent
                 unit = getChild conv "unit" >>= return . X.strContent
-                min = getChild conv "min" >>= return . fromJust . eval . X.strContent
-                max = getChild conv "max" >>= return . fromJust . eval . X.strContent
+                min' = getChild conv "min" >>= return . fromJust . eval . X.strContent
+                max' = getChild conv "max" >>= return . fromJust . eval . X.strContent
             case tip of
                 "string" -> Just VString
-                "decimal" -> Just $ VDecimal (fromJust lsb) unit min max
-                "unsigned decimal" -> Just $ VUnsignedDecimal (fromJust lsb) unit min max
-                "integer" -> Just $ VInteger unit min max
-                "unsigned integer" -> Just $ VUnsignedInteger unit min max
+                "decimal" -> Just $ VDecimal (fromJust lsb) unit min' max'
+                "unsigned decimal" -> Just $ VUnsignedDecimal (fromJust lsb) unit min' max'
+                "integer" -> Just $ VInteger unit min' max'
+                "unsigned integer" -> Just $ VUnsignedInteger unit min' max'
                 _ -> Nothing
 
 getCategoryDescriptionsAll :: [String] -> [(Category, [(Edition, [(String, Desc)])])]
 getCategoryDescriptionsAll ss = [(cat, editions cat) | cat <- cats] where
-    all = sortBy cmp . map getCategoryDescription $ ss
-    cats = nub . map (\(c,_,_) -> c) $ all
-    editions cat = noDups cat . map (\(_,e,d) -> (e,d)) . filter (\(c,_,_) -> (c==cat)) $ all
+    allStr = sortBy cmp . map getCategoryDescription $ ss
+    cats = nub . map (\(c,_,_) -> c) $ allStr
+    editions cat = noDups cat . map (\(_,e,d) -> (e,d)) . filter (\(c,_,_) -> (c==cat)) $ allStr
     cmp (c1,e1,_) (c2,e2,_) = (compare c1 c2) `mappend` (compare e1 e2)
-    noDups cat editions 
-        | nub ed == ed = editions
+    noDups cat edit
+        | nub ed == ed = edit
         | otherwise = error $ "duplicated editions in cat: " ++ show cat
         where
-            ed = map fst editions
+            ed = map fst edit
 
 getCategoryDescriptions :: [(Category,Edition)] -> [String] -> [(Category, (Edition, [(String, Desc)]))]
 getCategoryDescriptions requested ss = do
@@ -569,19 +573,20 @@ getCategoryDescriptions requested ss = do
     return (cat, (fst ed, snd ed))
 
 getUapByName :: Category -> [(Category, [(String, Desc)])] -> String -> Maybe Desc
-getUapByName cat uaps name = lookup cat uaps >>= lookup name
+getUapByName c uaps name = lookup c uaps >>= lookup name
 
 getUapByData :: Category -> [(Category, [(String, Desc)])] -> B.Bits -> Maybe Desc
-getUapByData 1 uaps b = undefined
+getUapByData 1 _ _ = undefined  -- TODO
 getUapByData cat uaps _ = lookup cat uaps >>= lookup "uap"
 
 getDesc :: Desc -> [String] -> Maybe Desc
 getDesc d [] = Just d
-getDesc d (x:xs) = do
-    d1 <- find x d
+getDesc d' (x:xs) = do
+    d1 <- findEl x d'
     getDesc d1 xs where
-        find name dsc = lookup name $ [(dName d,d) | d <- dItems dsc]
+        findEl name dsc = lookup name $ [(dName d,d) | d <- dItems dsc]
 
+getDesc' :: Desc -> [String] -> Desc
 getDesc' d s = fromJust $ getDesc d s
 
 main :: IO ()

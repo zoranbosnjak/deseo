@@ -24,7 +24,7 @@ flag developer
 library
     exposed-modules:     
         Data.Asterix
-        Data.Bits
+        Data.BitString
 
     other-modules:       
         Data.Asterix.Expression

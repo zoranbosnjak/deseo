@@ -5,7 +5,7 @@ python like math expression evaluator
 Author: Zoran Bosnjak (Sloveniacontrol)
 -}
 
-module Expression
+module Data.Asterix.Expression
 ( eval
 ) where
 

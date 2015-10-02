@@ -12,8 +12,8 @@ import Control.Monad.State
 
 import qualified Data.ByteString as S
 
-import qualified Asterix as A
-import qualified Bits as B
+import qualified Data.Asterix as A
+import qualified Data.Bits as B
 
 main = do
     prog <- getProgName
