@@ -126,7 +126,7 @@ data Tip = TItem
            | TRepetitive
            | TExplicit
            | TCompound
-           -- | TRfs
+           -- TRfs
            deriving (Show, Read, Eq)
 
 data Length = Length0 | Length1 Int | Length2 Int Int deriving (Show, Read, Eq)

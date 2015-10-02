@@ -1,28 +1,40 @@
-{-
 
-Bit string manipulation
-(low performance version, based on list)
+----------------
+-- |
+-- Module       :  Data.BitString
+--
+-- Maintainer   : Zoran Bošnjak <zoran.bosnjak@sloveniacontrol.si>
+--
+-- This module provides simple bitstring manipulation library.
+-- It's low performance version, based on list.
+--
+-- Example:
+--
+-- >    let b = Bits [True, False, False]
+-- >        c = take 2 b
+--
 
-Author: Zoran Bosnjak (Sloveniacontrol)
+module Data.BitString (
 
--}
-
-module Data.BitString
-(   Bits
+    -- * Bits creation
+    Bits
     , bits
+    , pack
+
+    -- * Util functions
     , length
     , take
     , drop
     , index
     , zeros
-    , pack
     , unpack
     , null
     , checkAligned
+
+    -- * Convert functions
     , toUnsigned
     , fromByteString
     , toByteString
-    , main -- run unit tests
 ) where
 
 import Control.Monad
@@ -33,10 +45,10 @@ import qualified Data.ByteString as S
 import Data.Word
 import qualified Data.Bits as B
 import Data.List (foldl1')
-import Data.Maybe
 
 import Test.QuickCheck
 
+-- | Bits data type.
 data Bits = Bits [Bool] 
                 deriving (Eq)
 
@@ -59,28 +71,43 @@ instance Monoid Bits where
 instance Arbitrary Bits where
     arbitrary = liftM Bits arbitrary
 
+-- | Calculate length of bitstring.
 length :: Bits -> Int
 length (Bits a) = P.length a
 
+-- | Take first 'n' bits.
 take :: Int -> Bits -> Bits
 take n (Bits a) = Bits $ P.take n a
 
+-- | Drop first 'n' bits.
 drop :: Int -> Bits -> Bits
 drop n (Bits a) = Bits $ P.drop n a
 
+-- | Return bit at given index.
 index :: Bits -> Int -> Bool
 index (Bits b) n = (P.!!) b n
 
+-- | Convert from list of Bool values to Bits
 pack :: [Bool] -> Bits
 pack = Bits
 
+-- | Convert from Bits to list of Bool values
 unpack :: Bits -> [Bool]
 unpack (Bits b) = b
 
+-- | Is empty bitstring?
 null :: Bits -> Bool
 null (Bits b) = P.null b
 
--- generate bitstring
+-- | Return 'n' bits of all zero values.
+zeros :: Int -> Bits
+zeros n = bits n (0::Integer)
+
+-- | Generate bitstring of given bit length and value,
+-- for example:
+--
+-- >    bits 16 0x1234
+--
 bits :: Integral a => Int -> a -> Bits
 bits n val = Bits . map toBool $ f n val [] where
     f 0 _ acc = acc
@@ -89,10 +116,7 @@ bits n val = Bits . map toBool $ f n val [] where
     toBool 0 = False
     toBool _ = True
 
-zeros :: Int -> Bits
-zeros n = bits n (0::Integer)
-
--- is byte aligned
+-- | If byte aligned, return Just value, else 'Nothing'.
 checkAligned :: Bits -> Maybe Bits
 checkAligned b = case (length b `mod` 8) of
     0 -> Just b
@@ -103,15 +127,17 @@ boolVal :: Num a => Bool -> a
 boolVal False = 0
 boolVal True = 1
 
--- convert bits to unsigned number
+-- | Convert bits to unsigned number.
 toUnsigned :: Num a => Bits -> a
 toUnsigned (Bits b) = sum . zipWith (*) factors . map boolVal . reverse $ b where
     factors = map (2^) ([0..]::[Int])
 
+-- | Convert bytestring to Bits.
 fromByteString :: S.ByteString -> Bits
 fromByteString = Bits . concatMap octet . S.unpack where
     octet w = map (B.testBit w) [7,6..0]
 
+-- | Convert Bits to bytestring.
 toByteString :: Bits -> Maybe S.ByteString
 toByteString bs = do
     (Bits s) <- checkAligned bs
@@ -121,42 +147,4 @@ toByteString bs = do
         break8 s = a : break8 b where (a,b) = splitAt 8 s
         toWord :: [Bool] -> Word8
         toWord s = sum $ zipWith (*) (map (2^) ([7,6..0]::[Int])) (map boolVal s)
-
--- run the tests
-main :: IO ()
-main = do
-    putStrLn "quick check test run..."
-
-    quickCheck testPack
-    quickCheck testPack2
-    quickCheck testByteString
-    quickCheck testUnsigned
-    quickCheck testCombine
-    quickCheck testZeros
-
-    where
-
-    testPack :: [Bool] -> Bool
-    testPack s =    ((unpack . pack $ s) == s)
-                    && (pack s) == (pack . unpack . pack $ s)
-
-    testPack2 :: Bits -> Bool
-    testPack2 b = (pack . unpack $ b) == b
-
-    testByteString :: [Word8] -> Bool
-    testByteString s = (fromJust . toByteString . fromByteString . S.pack $ s) == (S.pack s)
-
-    testUnsigned :: NonNegative Int -> Bool
-    testUnsigned (NonNegative val) = toUnsigned (bits (n+1) val) == val where
-        n = ceiling . logBase (2 :: Double) $ fromIntegral val
-
-    testCombine :: Bits -> Bits -> Bool
-    testCombine a b =   (pack (unpack a ++ unpack b) == c)
-                        && (take (length a) c == a)
-                        && (drop (length a) c == b)
-                        where c = a `mappend` b
-    
-    testZeros :: Property
-    testZeros = forAll (choose (0,100)) $ \n -> 
-         (toUnsigned . zeros $ n) == (0 :: Integer)
 
