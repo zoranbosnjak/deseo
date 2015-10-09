@@ -1,9 +1,26 @@
-
-{-
-python like math expression evaluator
-
-Author: Zoran Bosnjak (Sloveniacontrol)
--}
+----------------
+-- |
+-- Module       :  Data.Asterix.Expression
+--
+-- Maintainer   : Zoran Bošnjak <zoran.bosnjak@sloveniacontrol.si>
+--
+-- This module provides python like math expression evaluator
+-- for some basic expressions.
+--
+-- Examples:
+--
+-- >    > eval "1+2"
+-- >    Just 3.0
+-- >
+-- >    > eval "pow(2,10)"
+-- >    Just 1024.0
+-- >
+-- >    > eval "-180.0/pow(0x02, 23)"
+-- >    Just (-2.1457672119140625e-5)
+-- >
+-- >    > eval "test"
+-- >    Nothing
+--
 
 module Data.Asterix.Expression
 ( eval
@@ -11,12 +28,12 @@ module Data.Asterix.Expression
 
 import Language.Python.Version3 as P
 import Language.Python.Common.AST as A
-import Test.QuickCheck
 
--- parse and evaluate string expression
+-- | Parse and evaluate string expression.
+eval :: String -> Maybe Double
 eval s = do
     ast <- case P.parseExpr s "" of
-            Right (span,tok) -> Just span
+            Right (x,_) -> Just x
             _ -> Nothing
     eval2 ast
     where
@@ -30,6 +47,7 @@ eval s = do
                 op x = case operator e of
                     Plus {} -> x
                     Minus {} -> 0 - x
+                    _ -> undefined
         eval2 e@A.BinaryOp {left_op_arg=l, right_op_arg=r} = do
             x <- (eval2 l)
             y <- (eval2 r) 
@@ -40,38 +58,16 @@ eval s = do
                     Minus {} -> (-)
                     Multiply {} -> (*)
                     Divide {} -> (/)
-        eval2 e@A.Paren {paren_expr=exp} = eval2 exp
+                    _ -> undefined
+        eval2 A.Paren {paren_expr=expr} = eval2 expr
         eval2 e@A.Call {} = do
             let func = ident_string . var_ident . call_fun $ e
                 args' = map (eval2 . arg_expr) (call_args e)
             args <- sequence args'
             case func of
-                "pow" -> Just $ args!!0 ^^ (truncate (args!!1))
+                "pow" -> case (length args) of
+                            2 -> Just $ args!!0 ^^ (truncate (args!!1) :: Integer)
+                            _ -> Nothing
                 _ -> Nothing
         eval2 _ = Nothing
-
-main :: IO ()
-main = do
-
-    putStrLn "quick check test run..."
-
-    -- TODO: make explicit loop over all elements in a list (not N passes)
-    quickCheck testAll where
-        testAll :: Property
-        testAll = forAll (elements testcase) $ \(x,y) ->
-            let (Just out) = eval x
-            in out == y
-            where
-                testcase =
-                    [ ("1", 1)
-                    , ("(1)", 1)
-                    , ("1+2", 3)
-                    , ("1 + 2 * 3 + 4", 11)
-                    , ("-1+2", 1)
-                    , ("-5-10", -15)
-                    , ("2*3", 6)
-                    , ("1/2", 0.5)
-                    , ("pow(2,10)", 1024)
-                    , ("-180.0/pow(0x02, 23)", -2.1457672119140625e-05)
-                    ]
 

@@ -50,6 +50,7 @@ module Data.Asterix
     , setString
     , setFloating
     , setInteger
+    , eval
 
     ,main
 ) where

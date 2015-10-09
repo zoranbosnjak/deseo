@@ -32,7 +32,7 @@ library
     build-depends:
         base ==4.6.*,
         language-python ==0.5.*,
-        QuickCheck ==2.6.*,
+        QuickCheck >= 2.7,
         bytestring ==0.10.*,
         deepseq-generics ==0.1.*,
         mtl ==2.1.*, 
@@ -48,4 +48,30 @@ library
 source-repository head
     type:     mercurial
     -- location: https://path.domain/url
+
+test-suite test-expression
+    type:       exitcode-stdio-1.0
+    hs-source-dirs: tests
+    main-is:    test-expression.hs
+    build-depends:  base >= 4.3 && < 4.9,
+                    deseo,
+                    HUnit,
+                    language-python == 0.5.*,
+                    QuickCheck >= 2.7,
+                    test-framework,
+                    test-framework-hunit,
+                    test-framework-quickcheck2
+
+test-suite test-bitstring
+    type:       exitcode-stdio-1.0
+    hs-source-dirs: tests
+    main-is:    test-bitstring.hs
+    build-depends:  base >= 4.3 && < 4.9,
+                    deseo,
+                    HUnit,
+                    QuickCheck >= 2.7,
+                    bytestring ==0.10.*,
+                    test-framework,
+                    test-framework-hunit,
+                    test-framework-quickcheck2
 
