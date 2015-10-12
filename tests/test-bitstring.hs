@@ -44,7 +44,7 @@ bits = do
     eq 2 2 [True,False]
     eq 2 3 [True,True]
     where
-        eq n a exp = assertEqual ((show n) ++ "," ++ (show a)) exp (B.unpack $ B.bits n a)
+        eq n a exp = assertEqual ((show n) ++ "," ++ (show a)) exp (B.unpack $ B.fromUnsigned n a)
 
 pack1 :: [Bool] -> Bool
 pack1 s = ((B.unpack . B.pack $ s) == s)
