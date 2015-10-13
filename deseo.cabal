@@ -53,7 +53,8 @@ test-suite test-expression
     type:       exitcode-stdio-1.0
     hs-source-dirs: tests
     main-is:    test-expression.hs
-    build-depends:  base >= 4.3 && < 4.9,
+    build-depends:  
+                    base >= 4.3 && < 4.9,
                     deseo,
                     HUnit,
                     language-python == 0.5.*,
@@ -66,11 +67,27 @@ test-suite test-bitstring
     type:       exitcode-stdio-1.0
     hs-source-dirs: tests
     main-is:    test-bitstring.hs
-    build-depends:  base >= 4.3 && < 4.9,
+    build-depends:  
+                    base >= 4.3 && < 4.9,
                     deseo,
                     HUnit,
                     QuickCheck >= 2.7,
                     bytestring ==0.10.*,
+                    test-framework,
+                    test-framework-hunit,
+                    test-framework-quickcheck2
+
+test-suite test-asterix
+    type:       exitcode-stdio-1.0
+    hs-source-dirs: tests
+    main-is:    test-asterix.hs
+    build-depends:  
+                    base >= 4.3 && < 4.9,
+                    deseo,
+                    HUnit,
+                    QuickCheck >= 2.7,
+                    bytestring ==0.10.*,
+                    filepath,
                     test-framework,
                     test-framework-hunit,
                     test-framework-quickcheck2
