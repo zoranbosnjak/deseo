@@ -17,7 +17,35 @@
 -- >        s <- readFile "path/to/catXY.xml"
 -- >        let c = A.categoryDescription s
 --
---      * TODO (add other examples)
+--      * parse many XML files, keep only latest revision of each defined category,
+--        force evaluation
+--
+-- >        import Control.Exception (evaluate)
+-- >        import Control.DeepSeq (force)
+-- >
+-- >        let args = [fileName1, fileName2,...]
+-- >        s <- mapM readFile args
+-- >        --  uaps <- evaluate . force . map ... TODO
+--
+--      * decode bits to records
+--
+-- >        import qualified Data.BitString as B
+-- >
+-- >        let datablock = B.fromUnsigned 48 0x000006800203
+-- >
+-- >        profiles <- ...
+-- >        let parse db = return db
+-- >                >>= toDataBlocks
+-- >                >>= mapM (toRecords profiles)
+-- >                >>= return . join
+-- >
+-- >        print $ parse datablock
+--
+--          TODO
+--
+--      * encode
+--
+--          TODO
 --
 
 module Data.Asterix
@@ -32,9 +60,29 @@ module Data.Asterix
     , UapName, ItemName, ItemDescription
     , Major, Minor
     , Cat
+    , Profiles
+
+    -- * Datablock
+    , DataBlock(..)
+    , toDataBlocks
+    -- , datablock 
 
     -- * XML parsers
     , categoryDescription
+
+    -- * UAP
+    , uapByName
+    , uapByData
+
+    -- * Decode
+    , toRecords
+
+    -- * Encode
+
+    -- * Converters: Item <-> (natural value)
+
+    -- * Util functions
+    , sizeOf
 
     -- * Expression evaluation
     , eval
@@ -43,6 +91,7 @@ module Data.Asterix
 
 import Data.Maybe (fromMaybe, isJust)
 import Data.Monoid
+import qualified Data.Map as Map
 import Data.Word
 
 import Control.DeepSeq.Generics
@@ -53,6 +102,10 @@ import Text.XML.Light.Lexer (XmlSource)
 
 import qualified Data.BitString as B
 import Data.Asterix.Expression (eval)
+
+-- for debug purposes
+-- import Debug.Trace
+-- dump = flip trace
 
 -- | Asterix item types
 data Tip = TItem
@@ -66,7 +119,10 @@ data Tip = TItem
            deriving (Show, Read, Eq)
 
 -- | description + data
-data Item = Item Desc B.Bits deriving (Show,Eq)
+data Item = Item {
+        iDsc :: Desc 
+        ,iBits :: B.Bits 
+        }deriving (Show,Eq)
 
 -- | Asterix item description
 data Desc = Desc {  dName       :: ItemName
@@ -103,12 +159,14 @@ type Size = Int
 -- | Asterix standard (particular edition)
 data Category = Category {
         cCat :: Cat 
-        ,cEd :: Edition 
+        ,cEdition :: Edition 
         ,cUaps :: [Uap]
     }
 instance NFData Category
 instance Show Category where
-    show c = "(category " ++ (show $ cCat c) ++ ", edition " ++ (show $ cEd c) ++ ")"
+    show c = "(category " ++ (show $ cCat c) ++ ", edition " ++ (show $ cEdition c) ++ ")"
+
+type Profiles = Map.Map Cat Category
 
 -- | Asterix edition
 data Edition = Edition Major Minor deriving (Eq)
@@ -138,6 +196,11 @@ data Value =
     | VInteger (Maybe Unit) (Maybe Min) (Maybe Max)
     | VUnsignedInteger (Maybe Unit) (Maybe Min) (Maybe Max)
     deriving (Eq, Show)
+
+data DataBlock = DataBlock {
+    dbCat :: Cat
+    , dbData :: B.Bits
+} deriving (Eq, Show)
 
 -- | Read xml content.
 categoryDescription :: XmlSource s => s -> Either String Category
@@ -176,7 +239,7 @@ categoryDescription src = do
                 }
             return (uapName, topLevel)
 
-    Right $ Category {cCat=cat, cEd=ed, cUaps=dscr} 
+    Right $ Category {cCat=cat, cEdition=ed, cUaps=dscr} 
     
     where
         nameOf s = X.blank_name {X.qName=s}
@@ -270,4 +333,154 @@ categoryDescription src = do
                         "integer" -> Right $ VInteger unit min' max'
                         "unsigned integer" -> Right $ VUnsignedInteger unit min' max'
                         _ -> Right VRaw
+
+-- | get UAP by name
+uapByName :: Category -> UapName -> Maybe Desc
+uapByName c name = lookup name (cUaps c)
+
+-- | get UAP by data
+uapByData :: Category -> B.Bits -> Maybe Desc
+uapByData c _
+    | cCat c == 1   = undefined -- TODO, cat1 is special
+    | otherwise     = uapByName c "uap"
+
+-- | Split bits to datablocks
+toDataBlocks :: B.Bits -> Maybe [DataBlock]
+toDataBlocks bs
+    | B.null bs = Just []
+    | otherwise = do
+        x <- B.checkAligned bs
+        cat <- return x >>= B.takeMaybe 8 >>= return . B.toUnsigned
+        len <- return x >>= B.dropMaybe 8 >>= B.takeMaybe 16 >>= return . B.toUnsigned
+        y <- return x >>= B.takeMaybe (len*8) >>= B.dropMaybe 24
+
+        let db = DataBlock cat y
+        rest <- return x >>= B.dropMaybe (len*8) >>= toDataBlocks
+        Just (db:rest)
+
+-- | Split datablock to records.
+toRecords :: Profiles -> DataBlock -> Maybe [Item]
+toRecords profiles db = do
+    let cat = dbCat db
+        d = dbData db
+    category <- Map.lookup cat profiles
+    getRecords category d 
+    where
+
+        getRecords :: Category -> B.Bits -> Maybe [Item]
+        getRecords category bs
+            | B.null bs = Just []
+            | otherwise = do
+                dsc <- uapByData category bs
+                size <- sizeOf dsc bs
+                rec <- B.takeMaybe size bs
+                rest <- getRecords category (B.drop size bs)
+                Just $ (Item {iDsc=dsc, iBits=rec}):rest
+
+-- | Get fspec bits, (without fs, with fx)
+getFspec :: B.Bits -> Maybe ([Bool],[Bool])
+getFspec b = do
+    n <- checkSize 8 b
+    let val = B.unpack . B.take n $ b
+    if (last val == False)
+        then Just ((init val), val)
+        else do
+            (remin, remTotal) <- getFspec (B.drop n b)
+            let rv = (init val) ++ remin
+                rvTotal = val ++ remTotal
+            Just (rv, rvTotal)
+
+-- | Check that requested number of bits are available.
+checkSize :: Int -> B.Bits -> Maybe Int
+checkSize n b
+    | B.length b < n = Nothing
+    | otherwise = Just n
+
+-- | Calculate items size.
+sizeOf :: Desc -> B.Bits -> Maybe Size
+
+-- size of Item
+sizeOf Desc {dTip=TItem, dLen=Length1 n} b = checkSize n b
+sizeOf Desc {dTip=TItem, dItems=[]} _ = Just 0
+sizeOf d@Desc {dTip=TItem, dItems=(i:is)} b = do
+    size <- sizeOf i b
+    rest <- sizeOf (d {dItems=is}) (B.drop size b)
+    Just (size+rest)
+
+-- size of Fixed
+sizeOf Desc {dTip=TFixed, dLen=Length1 n} b = checkSize n b
+
+-- size of Spare
+sizeOf Desc {dTip=TSpare, dLen=Length1 n} b = do
+    size <- checkSize n b
+    if (B.take size b) /= (B.zeros size) 
+        then Nothing
+        else Just size
+
+-- size of Extended
+sizeOf Desc {dTip=TExtended, dLen=Length2 n1 n2} b = do
+    size <- checkSize n1 b
+    if (B.index b (size-1)) 
+        then dig size
+        else Just size
+    where
+        dig offset = do 
+            size <- checkSize offset b
+            if (B.index b (size-1)) 
+                then dig (size+n2)
+                else Just size
+
+-- size of Repetitive
+sizeOf d@Desc {dTip=TRepetitive} b = do
+    s8 <- checkSize 8 b
+    let rep = B.toUnsigned . B.take s8 $ b
+        b' = B.drop s8 b
+    getSubitems rep b' 8
+    where
+        getSubitems :: Int -> B.Bits -> Size -> Maybe Size
+        getSubitems 0 _ size = Just size
+        getSubitems n b'' size = do
+            itemSize <- sizeOf (d {dTip=TItem}) b''
+            getSubitems (n-1) (B.drop itemSize b'') (itemSize+size)
+
+-- size of Explicit
+sizeOf Desc {dTip=TExplicit} b = do
+    s8 <- checkSize 8 b
+    let val = B.toUnsigned . B.take s8 $ b
+    case val of
+        0 -> Nothing
+        _ -> checkSize (8*val) b
+
+-- size of Compound
+sizeOf Desc {dTip=TCompound, dItems=items} b' = do
+    b <- B.checkAligned b'
+    (fspec, fspecTotal) <- getFspec b
+    -- TODO: check length of items (must be >= length of fspec)
+    let subitems :: [(String,Desc)]
+        subitems = [(dName dsc,dsc) | (f,dsc) <- zip fspec items, (f==True)]
+        offset = length fspecTotal
+
+    dig subitems (B.drop offset b) offset
+    where
+
+        dig :: [(String,Desc)] -> B.Bits -> Size -> Maybe Size
+        dig [] _ size = Just size
+        dig (x:xs) b size = do
+            itemSize <- sizeOf (snd x) b
+            dig xs (B.drop itemSize b) (itemSize+size)
+
+-- size of unknown
+sizeOf _ _ = Nothing
+
+--  | Create datablock
+{-
+datablock :: Cat -> [Item] -> DataBlock
+datablock cat items = DataBlock cat bs where
+    bs = c `mappend` ln `mappend` records
+    c = B.fromUnsigned 8 $ toInteger cat
+    ln = B.fromUnsigned 16 $ (B.length records `div` 8) + 3
+    records = mconcat $ map encode items
+
+encode = undefined
+-}
 

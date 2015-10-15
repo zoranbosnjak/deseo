@@ -33,7 +33,9 @@ module Data.BitString (
     -- * Util functions
     , length
     , take
+    , takeMaybe
     , drop
+    , dropMaybe
     , index
     , zeros
     , unpack
@@ -89,9 +91,21 @@ length (Bits a) = P.length a
 take :: Int -> Bits -> Bits
 take n (Bits a) = Bits $ P.take n a
 
+-- | Take first 'n' bits (if available).
+takeMaybe :: Int -> Bits -> Maybe Bits
+takeMaybe n b
+    | length b < n = Nothing
+    | otherwise = Just $ take n b
+
 -- | Drop first 'n' bits.
 drop :: Int -> Bits -> Bits
 drop n (Bits a) = Bits $ P.drop n a
+
+-- | Drop first 'n' bits (if available)
+dropMaybe :: Int -> Bits -> Maybe Bits
+dropMaybe n b
+    | length b < n = Nothing
+    | otherwise = Just $ drop n b
 
 -- | Return bit at given index.
 index :: Bits -> Int -> Bool

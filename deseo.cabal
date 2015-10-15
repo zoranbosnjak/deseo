@@ -83,6 +83,7 @@ test-suite test-asterix
     main-is:    test-asterix.hs
     build-depends:  
                     base >= 4.3 && < 4.9,
+                    containers ==0.5.*, 
                     deseo,
                     HUnit,
                     QuickCheck >= 2.7,

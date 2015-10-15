@@ -27,6 +27,7 @@ tests = [
                 , testProperty "take" take'
                 , testProperty "drop" drop'
                 , testProperty "zeros" zeros'
+                , testCase "maybe" takeDropMaybe
         ]
         , testGroup "convert" [
                 testCase "unsigned" unsigned'
@@ -81,4 +82,16 @@ combine a b =   (B.pack (B.unpack a ++ B.unpack b) == c)
 zeros' :: Property
 zeros' = forAll (choose (0,100)) $ \n ->
             (B.toUnsigned . B.zeros $ n) == (0 :: Integer)
+
+takeDropMaybe :: Assertion
+takeDropMaybe = do
+    let b = B.pack [True, False]
+    
+    assertEqual "take1" (Just $ B.pack [True]) (B.takeMaybe 1 b)
+    assertEqual "take2" (Just $ B.pack [True,False]) (B.takeMaybe 2 b)
+    assertEqual "take3" Nothing (B.takeMaybe 3 b)
+
+    assertEqual "drop1" (Just $ B.pack [False]) (B.dropMaybe 1 b)
+    assertEqual "drop2" (Just $ B.pack []) (B.dropMaybe 2 b)
+    assertEqual "drop3" Nothing (B.dropMaybe 3 b)
 
