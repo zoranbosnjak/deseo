@@ -12,11 +12,16 @@
             </items>
         </item>
 
+        <item name="020" type="Fixed">
+            <len>16</len>
+        </item>
+
     </items>
 
     <uaps>
         <uap>
             <item>010</item>
+            <item>020</item>
         </uap>
     </uaps>
 </category>

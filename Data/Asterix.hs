@@ -31,7 +31,7 @@
 --
 -- >        import qualified Data.BitString as B
 -- >
--- >        let datablock = B.fromUnsigned 48 0x000006800203
+-- >        let datablock = B.fromIntegral 48 0x000006800203
 -- >
 -- >        profiles <- ...
 -- >        let parse db = return db
@@ -77,12 +77,21 @@ module Data.Asterix
     -- * Decode
     , toRecords
 
+    -- * Subitem access
+    , child
+    , childR
+    , childs
+
     -- * Encode
 
-    -- * Converters: Item <-> (natural value)
+    -- * Converters: Item - Numeric value
+    , toIntegral
+
+    -- * Converters: Item - (natural value)
 
     -- * Util functions
     , sizeOf
+    , grab
 
     -- * Expression evaluation
     , eval
@@ -95,7 +104,8 @@ import qualified Data.Map as Map
 import Data.Word
 
 import Control.DeepSeq.Generics
-import Control.Monad.State
+import Control.Monad
+-- import Control.Monad.State
 
 import qualified Text.XML.Light as X
 import Text.XML.Light.Lexer (XmlSource)
@@ -350,8 +360,8 @@ toDataBlocks bs
     | B.null bs = Just []
     | otherwise = do
         x <- B.checkAligned bs
-        cat <- return x >>= B.takeMaybe 8 >>= return . B.toUnsigned
-        len <- return x >>= B.dropMaybe 8 >>= B.takeMaybe 16 >>= return . B.toUnsigned
+        cat <- return x >>= B.takeMaybe 8 >>= return . B.toIntegral
+        len <- return x >>= B.dropMaybe 8 >>= B.takeMaybe 16 >>= return . B.toIntegral
         y <- return x >>= B.takeMaybe (len*8) >>= B.dropMaybe 24
 
         let db = DataBlock cat y
@@ -396,6 +406,12 @@ checkSize n b
     | B.length b < n = Nothing
     | otherwise = Just n
 
+-- | Grab bits: bits -> (bits for item, remaining bits)
+grab :: Desc -> B.Bits -> Maybe (B.Bits, B.Bits)
+grab dsc b = do
+    size <- sizeOf dsc b
+    Just (B.take size b, B.drop size b)
+
 -- | Calculate items size.
 sizeOf :: Desc -> B.Bits -> Maybe Size
 
@@ -433,7 +449,7 @@ sizeOf Desc {dTip=TExtended, dLen=Length2 n1 n2} b = do
 -- size of Repetitive
 sizeOf d@Desc {dTip=TRepetitive} b = do
     s8 <- checkSize 8 b
-    let rep = B.toUnsigned . B.take s8 $ b
+    let rep = B.toIntegral . B.take s8 $ b
         b' = B.drop s8 b
     getSubitems rep b' 8
     where
@@ -446,7 +462,7 @@ sizeOf d@Desc {dTip=TRepetitive} b = do
 -- size of Explicit
 sizeOf Desc {dTip=TExplicit} b = do
     s8 <- checkSize 8 b
-    let val = B.toUnsigned . B.take s8 $ b
+    let val = B.toIntegral . B.take s8 $ b
     case val of
         0 -> Nothing
         _ -> checkSize (8*val) b
@@ -477,10 +493,125 @@ sizeOf _ _ = Nothing
 datablock :: Cat -> [Item] -> DataBlock
 datablock cat items = DataBlock cat bs where
     bs = c `mappend` ln `mappend` records
-    c = B.fromUnsigned 8 $ toInteger cat
-    ln = B.fromUnsigned 16 $ (B.length records `div` 8) + 3
+    c = B.fromIntegral 8 $ toInteger cat
+    ln = B.fromIntegral 16 $ (B.length records `div` 8) + 3
     records = mconcat $ map encode items
 
 encode = undefined
+-}
+
+-- | Convert from item to numeric value
+toIntegral :: Integral a => Item -> a
+toIntegral = B.toIntegral . iBits
+
+-- | Get subitem.
+--
+-- >    return item >>= child "010" >>= child "SAC"
+--
+child :: ItemName -> Item -> Maybe Item
+child name item = childs item >>= return . lookup name >>= join
+
+-- | Get deep subitem.
+--
+-- >    childR ["010", "SAC"] item
+--
+childR :: [ItemName] -> Item -> Maybe Item
+childR [] item = Just item
+childR (i:is) item = child i item >>= childR is
+
+-- | Get all subitems.
+childs :: Item -> Maybe [(ItemName,Maybe Item)]
+childs item
+
+    -- Item
+    | tip == TItem = do 
+        let consume [] _ = Just []
+            consume (i:is) b' = do
+                (x,y) <- grab i b'
+                rest <- consume is y
+                Just $ (dName i, Just $ Item i x):rest
+        consume items b
+
+    | tip == TExtended = undefined    -- TODO
+{-
+-- get childs of extended item
+childs (Item d@Desc {dTip=TExtended, dLen=Length2 n1 n2, dItems=items} b) = collect items b [] chunks where
+    chunks = [n1] ++ repeat n2
+
+    collect items b acc chunks
+        | B.null b = acc
+        | otherwise = collect items' b2 acc' chunks'
+        where
+            (b1, b2) = (B.take (n-1) b, B.drop n b)
+            (n, chunks') = (head chunks, tail chunks)
+            (items',rv) = take b1 items []
+            acc' = acc ++ rv
+            take b items acc
+                | B.null b = (items,reverse acc)
+                | otherwise = take (B.drop size b) (tail items) (item:acc)
+                where
+                    i = head items
+                    item = Item i (B.take size b)
+                    (Just size) = sizeOf i b
+-}
+
+    -- Repetitive
+    | tip == TRepetitive = undefined    -- TODO
+
+    -- Compound
+    | tip == TCompound = do
+        (fspec,fspecTotal) <- getFspec b
+
+        let fspec' = fspec ++ (repeat False)
+
+            consume [] _ = Just []
+            consume ((i,f):xs) bs = do
+                (item',b') <- fetch f
+                rest <- consume xs b'
+                Just $ (name,item'):rest
+                where
+                    name = dName i
+                    fetch False = Just (Nothing, bs)
+                    fetch True = do
+                        (x,y) <- grab i bs
+                        Just $ (Just $ Item i x, y)
+
+            checkFspec
+                | (length minFspec) <= (length items) = Just minFspec
+                | otherwise = Nothing
+                where minFspec = reverse . dropWhile (==False) . reverse $ fspec
+
+        _ <- checkFspec
+        b' <- B.dropMaybe (length fspecTotal) b
+        consume (zip items fspec') b'
+
+    -- unknown
+    | otherwise = Nothing
+    where
+        tip = dTip . iDsc $ item
+        items = dItems . iDsc $ item
+        b = iBits item
+
+        
+{-
+-- recreate compound item from subitems
+unChilds :: Desc -> [(Name,Maybe Item)] -> Item
+unChilds d@Desc {dTip=TCompound, dItems=items} present = assert (length items == length present) $ Item d bs where
+    bs = B.pack fspecTotal `mappend` (mconcat . map (encode . fromJust) . filter isJust . map snd $ present)
+    fspecTotal
+        | fspec == [] = []
+        | otherwise = concat leading ++ lastOctet
+    leading = map (\l -> l++[True]) (init groups)
+    lastOctet = (last groups) ++ [False]
+    groups = spl fspec
+    spl [] = []
+    spl s =
+        let (a,b) = splitAt 7 s
+        in (fill a):(spl b)
+    fill a = take 7 (a++repeat False)
+    fspec :: [Bool]
+    fspec = strip [isJust . snd $ f | f<-present]
+    strip = reverse . dropWhile (==False) . reverse
+unChilds _ _ = undefined
 -}
 

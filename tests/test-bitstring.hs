@@ -30,7 +30,7 @@ tests = [
                 , testCase "maybe" takeDropMaybe
         ]
         , testGroup "convert" [
-                testCase "unsigned" unsigned'
+                testCase "integral" integral'
                 , testProperty "bytestring" bytestring'
         ]
         , testGroup "other" [
@@ -45,7 +45,7 @@ bits = do
     eq 2 2 [True,False]
     eq 2 3 [True,True]
     where
-        eq n a exp = assertEqual ((show n) ++ "," ++ (show a)) exp (B.unpack $ B.fromUnsigned n a)
+        eq n a exp = assertEqual ((show n) ++ "," ++ (show a)) exp (B.unpack $ B.fromIntegral n a)
 
 pack1 :: [Bool] -> Bool
 pack1 s = ((B.unpack . B.pack $ s) == s)
@@ -63,11 +63,11 @@ take' n b = (B.take n b) == (B.pack . take n . B.unpack $ b)
 drop' :: Int -> B.Bits -> Bool
 drop' n b = (B.drop n b) == (B.pack . drop n . B.unpack $ b)
 
-unsigned' :: Assertion
-unsigned' = do
-    assertEqual "to unsigned" 2 (B.toUnsigned . B.pack $ [True,False])
-    assertEqual "to unsigned" 2 (B.toUnsigned . B.pack $ [False,True,False])
-    assertEqual "to unsigned" 0 (B.toUnsigned . B.pack $ [False,False,False])
+integral' :: Assertion
+integral' = do
+    assertEqual "to integral" 2 (B.toIntegral . B.pack $ [True,False])
+    assertEqual "to integral" 2 (B.toIntegral . B.pack $ [False,True,False])
+    assertEqual "to integral" 0 (B.toIntegral . B.pack $ [False,False,False])
 
 bytestring' :: [Word8] -> Bool
 bytestring' s = (fromJust . B.toByteString . B.fromByteString . S.pack $ s) == (S.pack s)
@@ -81,7 +81,7 @@ combine a b =   (B.pack (B.unpack a ++ B.unpack b) == c)
 
 zeros' :: Property
 zeros' = forAll (choose (0,100)) $ \n ->
-            (B.toUnsigned . B.zeros $ n) == (0 :: Integer)
+            (B.toIntegral . B.zeros $ n) == (0 :: Integer)
 
 takeDropMaybe :: Assertion
 takeDropMaybe = do

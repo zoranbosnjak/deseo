@@ -4,6 +4,7 @@ module Main where
 
 import Control.Monad
 import qualified Data.Map as Map
+import Data.Maybe
 import Data.Either
 
 import System.FilePath
@@ -32,6 +33,9 @@ tests = [
         ],
         testGroup "records" [
             testCase "decode" splitRec
+            , testCase "childs" childs'
+        ],
+        testGroup "util" [
         ]
     ]
 
@@ -61,8 +65,8 @@ readBad = do
 dbdecode :: Assertion
 dbdecode = do
     let x0 = B.pack []
-        x1 = B.fromUnsigned (8*11) 0x02000bf0931702b847147e
-        x2 = B.fromUnsigned (8*10) 0x01000501020200050304
+        x1 = B.fromIntegral (8*11) 0x02000bf0931702b847147e
+        x2 = B.fromIntegral (8*10) 0x01000501020200050304
 
     assertEqual "0 datablocks" (Just []) (toDataBlocks x0)
 
@@ -72,8 +76,8 @@ dbdecode = do
 
     assertEqual "2 datablocks"
         (Just [
-            DataBlock {dbCat=1, dbData=(B.fromUnsigned 16 0x0102)}
-            , DataBlock {dbCat=2, dbData=(B.fromUnsigned 16 0x0304)}
+            DataBlock {dbCat=1, dbData=(B.fromIntegral 16 0x0102)}
+            , DataBlock {dbCat=2, dbData=(B.fromIntegral 16 0x0304)}
             ])
         (toDataBlocks x2)
 
@@ -85,20 +89,51 @@ splitRec :: Assertion
 splitRec = do
     cat0 <- readFile (xmldir </> "cat000_0.0.xml") >>= return . categoryDescription
     let profiles = Map.fromList [(cCat c, c) | c<-(rights [cat0])]
-
         parse db = return db 
                 >>= toDataBlocks 
                 >>= mapM (toRecords profiles)
                 >>= return . join
                 >>= return . map iBits
 
-        d0 = B.fromUnsigned 32 0x000003
-        d1a = B.fromUnsigned 32 0x00000400
-        d1b = B.fromUnsigned 48 0x000006800203
-        d2 = B.fromUnsigned 72 0x000009800203800405
+        d0 = B.fromIntegral 32 0x000003
+        d1a = B.fromIntegral 32 0x00000400
+        d1b = B.fromIntegral 48 0x000006800203
+        d2 = B.fromIntegral 72 0x000009800203800405
 
     assertEqual "0 rec" Nothing (parse d0)
-    assertEqual "1a rec" (Just [B.fromUnsigned 8 0]) (parse d1a)
-    assertEqual "1b rec" (Just [B.fromUnsigned 24 0x800203]) (parse d1b)
-    assertEqual "2 rec" (Just [B.fromUnsigned 24 0x800203, B.fromUnsigned 24 0x800405]) (parse d2)
+    assertEqual "1a rec" (Just [B.fromIntegral 8 0]) (parse d1a)
+    assertEqual "1b rec" (Just [B.fromIntegral 24 0x800203]) (parse d1b)
+    assertEqual "2 rec" (Just [B.fromIntegral 24 0x800203, B.fromIntegral 24 0x800405]) (parse d2)
+
+childs' :: Assertion
+childs' = do
+    cat0 <- readFile (xmldir </> "cat000_1.2.xml") >>= return . categoryDescription
+    let profiles = Map.fromList [(cCat c, c) | c<-(rights [cat0])]
+        parse db = return db 
+                >>= toDataBlocks 
+                >>= mapM (toRecords profiles)
+                >>= return . join
+
+        d = B.fromIntegral 48 0x000006800203
+        Just rr = parse d
+        r = head rr
+        Just (i010:i020:_) = childs r
+        Just i010' = snd i010
+        Just (sac:sic:_) = childs i010'
+
+        realSac = B.fromIntegral 8 0x02
+        realSic = B.fromIntegral 8 0x03
+
+    assertEqual "i010" ("010",True) (fst i010, isJust . snd $ i010)
+    assertEqual "i020" ("020",False) (fst i020, isJust . snd $ i020)
+
+    assertEqual "sac" "SAC" (fst sac)
+    assertEqual "sic" "SIC" (fst sic)
+
+    assertEqual "sac" realSac (iBits . fromJust . snd $ sac)
+    assertEqual "sic" realSic (iBits . fromJust . snd $ sic)
+
+    assertEqual "sac" (Just realSac) (childR ["010", "SAC"] r >>= return . iBits)
+    assertEqual "sic" (Just realSic) (childR ["010", "SIC"] r >>= return . iBits)
+    assertEqual "sec" Nothing (childR ["010", "SEC"] r >>= return . iBits)
 
