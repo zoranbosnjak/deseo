@@ -16,12 +16,23 @@
             <len>16</len>
         </item>
 
+        <item name="030" type="Fixed">
+            <dsc>Time</dsc>
+            <len>24</len>
+            <convert>
+                <type>unsigned decimal</type>
+                <lsb>1.0/128</lsb>
+                <unit>s</unit>
+            </convert>
+        </item>
+
     </items>
 
     <uaps>
         <uap>
             <item>010</item>
             <item>020</item>
+            <item>030</item>
         </uap>
     </uaps>
 </category>

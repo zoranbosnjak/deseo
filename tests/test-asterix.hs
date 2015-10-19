@@ -35,7 +35,14 @@ tests = [
             testCase "decode" splitRec
             , testCase "childs" childs'
         ],
+        testGroup "create" [
+            testCase "create" testCreate
+        ],
+        testGroup "convert" [
+            testCase "get" testGet
+        ],
         testGroup "util" [
+            testCase "sizeof" testSizeOf
         ]
     ]
 
@@ -136,4 +143,68 @@ childs' = do
     assertEqual "sac" (Just realSac) (childR ["010", "SAC"] r >>= return . iBits)
     assertEqual "sic" (Just realSic) (childR ["010", "SIC"] r >>= return . iBits)
     assertEqual "sec" Nothing (childR ["010", "SEC"] r >>= return . iBits)
+
+    assertEqual "childs/unchilds" (Just r) (childs r >>= unChilds (iDsc r))
+
+testCreate :: Assertion
+testCreate = do
+    cat0 <- readFile (xmldir </> "cat000_1.2.xml") >>= return . categoryDescription
+    let profiles = Map.fromList [(cCat c, c) | c<-(rights [cat0])]
+        (Right cat0') = cat0
+        (Just cat0'') = uapByName cat0' "uap"
+        
+        rec0 = create cat0'' $ return ()
+
+        rec1a = create cat0'' $ do
+                    putItem "010" $ fromBits (B.fromIntegral 16 0x0102)
+
+        rec1b = create cat0'' $ do
+                    putItem "010" $ fromRaw 0x0102
+
+        rec1c = create cat0'' $ do
+                    putItem "010" $ fromValues fromRaw [("SAC", 0x01), ("SIC", 0x02)]
+
+        rec1d = create cat0'' $ do
+                    "010" ! fromRaw 0x0102
+
+        rec1e = create cat0'' $ do
+                    "010" `putItem` fromRaw 0x0102
+
+        rec2 = fromValues fromRaw [("010", 0x0102)] cat0''
+
+    assertEqual "created 0" True (isJust rec0)
+    assertEqual "created 1a" True (isJust rec1a)
+
+    assertEqual "not equal" False (rec0==rec1a)
+    assertEqual "equal 1b" rec1a rec1b
+    assertEqual "equal 1c" rec1a rec1c
+    assertEqual "equal 1d" rec1a rec1d
+    assertEqual "equal 1e" rec1a rec1e
+    assertEqual "equal 2" rec1a rec2
+
+        {-
+
+        rec2 = create cat0 $ do
+                    putItem "006" $ fromList [
+                                        [("ModeS", 0x010203)]
+                                        , [("ModeS", 0x020304)]
+        rec3 = create cat0 $ do
+                    putItem "007" fromSpare
+        -}
+
+testGet :: Assertion
+testGet = do
+    cat0 <- readFile (xmldir </> "cat000_1.2.xml") >>= return . categoryDescription
+    let profiles = Map.fromList [(cCat c, c) | c<-(rights [cat0])]
+    return ()
+
+testSizeOf :: Assertion
+testSizeOf = do
+    
+    cat0 <- readFile (xmldir </> "cat000_1.2.xml") >>= return . categoryDescription
+    let profiles = Map.fromList [(cCat c, c) | c<-(rights [cat0])]
+        (Right cat0') = cat0
+        (Just cat0'') = uapByName cat0' "uap"
+
+    assertEqual "empty" (Just 0) (sizeOf cat0'' (B.pack []))
 

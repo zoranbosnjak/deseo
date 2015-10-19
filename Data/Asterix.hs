@@ -43,6 +43,17 @@
 --
 --          TODO
 --
+--      * building items
+--
+-- >        catXY <- ...
+-- >        rec <- create catXY $ do
+-- >            "010" ! fromBits (B.fromIntegral 16 0x0102)
+-- >            "020" ! fromRaw 0x0203
+-- >            "030" ! fromValues fromRaw [("SAC", 0x01), ("SIC", 0x02)]
+-- >           
+-- >        rec <- fromValues fromRaw [("010", 0x0102)] catXY
+--
+--
 --      * encode
 --
 --          TODO
@@ -81,13 +92,26 @@ module Data.Asterix
     , child
     , childR
     , childs
+    , unChilds
 
-    -- * Encode
+    -- * Building items
+    , create, (!), putItem, delItem
 
-    -- * Converters: Item - Numeric value
-    , toIntegral
+    -- * Converters: value -> Maybe Item
+    , fromBits
+    , fromRaw
+    --, fromIntegral
+    --, fromFloat
+    --, fromString
+    , fromValues
 
-    -- * Converters: Item - (natural value)
+    -- * Converters: Item -> Maybe value
+    , toBits
+    , toRaw
+    -- , toIntegral
+    --, toFloat
+    --, toString
+    --, toValues
 
     -- * Util functions
     , sizeOf
@@ -98,14 +122,15 @@ module Data.Asterix
 
 ) where
 
-import Data.Maybe (fromMaybe, isJust)
+import Data.Maybe (fromMaybe, isJust, catMaybes)
+import Data.List (dropWhileEnd)
 import Data.Monoid
 import qualified Data.Map as Map
 import Data.Word
 
 import Control.DeepSeq.Generics
 import Control.Monad
--- import Control.Monad.State
+import Control.Monad.State
 
 import qualified Text.XML.Light as X
 import Text.XML.Light.Lexer (XmlSource)
@@ -114,8 +139,8 @@ import qualified Data.BitString as B
 import Data.Asterix.Expression (eval)
 
 -- for debug purposes
--- import Debug.Trace
--- dump = flip trace
+--import Debug.Trace
+--dump = flip trace
 
 -- | Asterix item types
 data Tip = TItem
@@ -470,16 +495,14 @@ sizeOf Desc {dTip=TExplicit} b = do
 -- size of Compound
 sizeOf Desc {dTip=TCompound, dItems=items} b' = do
     b <- B.checkAligned b'
-    (fspec, fspecTotal) <- getFspec b
-    -- TODO: check length of items (must be >= length of fspec)
-    let subitems :: [(String,Desc)]
+    let (fspec, fspecTotal) = fromMaybe ([],[]) (getFspec b)
         subitems = [(dName dsc,dsc) | (f,dsc) <- zip fspec items, (f==True)]
         offset = length fspecTotal
+        fspecMin = dropWhileEnd (==False) fspec
 
+    guard (length items >= length fspecMin)
     dig subitems (B.drop offset b) offset
     where
-
-        dig :: [(String,Desc)] -> B.Bits -> Size -> Maybe Size
         dig [] _ size = Just size
         dig (x:xs) b size = do
             itemSize <- sizeOf (snd x) b
@@ -499,10 +522,6 @@ datablock cat items = DataBlock cat bs where
 
 encode = undefined
 -}
-
--- | Convert from item to numeric value
-toIntegral :: Integral a => Item -> a
-toIntegral = B.toIntegral . iBits
 
 -- | Get subitem.
 --
@@ -560,7 +579,7 @@ childs (Item d@Desc {dTip=TExtended, dLen=Length2 n1 n2, dItems=items} b) = coll
 
     -- Compound
     | tip == TCompound = do
-        (fspec,fspecTotal) <- getFspec b
+        let (fspec, fspecTotal) = fromMaybe ([],[]) (getFspec b)
 
         let fspec' = fspec ++ (repeat False)
 
@@ -592,26 +611,110 @@ childs (Item d@Desc {dTip=TExtended, dLen=Length2 n1 n2, dItems=items} b) = coll
         items = dItems . iDsc $ item
         b = iBits item
 
-        
-{-
--- recreate compound item from subitems
-unChilds :: Desc -> [(Name,Maybe Item)] -> Item
-unChilds d@Desc {dTip=TCompound, dItems=items} present = assert (length items == length present) $ Item d bs where
-    bs = B.pack fspecTotal `mappend` (mconcat . map (encode . fromJust) . filter isJust . map snd $ present)
-    fspecTotal
-        | fspec == [] = []
-        | otherwise = concat leading ++ lastOctet
-    leading = map (\l -> l++[True]) (init groups)
-    lastOctet = (last groups) ++ [False]
-    groups = spl fspec
-    spl [] = []
-    spl s =
-        let (a,b) = splitAt 7 s
-        in (fill a):(spl b)
-    fill a = take 7 (a++repeat False)
-    fspec :: [Bool]
-    fspec = strip [isJust . snd $ f | f<-present]
-    strip = reverse . dropWhile (==False) . reverse
-unChilds _ _ = undefined
--}
+-- recreate item from subitems
+unChilds :: Desc -> [(ItemName,Maybe Item)] -> Maybe Item
+unChilds dsc present = case (dTip dsc) of
+    TCompound -> do
+        let items = dItems dsc
+            bs = B.pack fspecTotal `mappend` (mconcat . map iBits . catMaybes . map snd $ present)
+            fspecTotal
+                | fspec == [] = []
+                | otherwise = concat leading ++ lastOctet
+            fspec = dropWhileEnd (==False) $ [isJust . snd $ f | f<-present]
+            leading = map (++[True]) (init groups)
+            lastOctet = (last groups) ++ [False]
+            groups = spl fspec
+            spl [] = []
+            spl s =
+                let (a,b) = splitAt 7 s
+                in (fill a):(spl b)
+            fill a = take 7 (a++repeat False)
+        guard $ length items == length present
+        return $ Item dsc bs
+    _ -> Nothing
+
+-- | Create compound item from profile and transform function.
+create :: Desc -> State (Maybe Item) () -> Maybe Item
+create profile transform
+    | tip==TCompound = execState transform $ emptyRecord profile
+    | otherwise = Nothing
+    where
+        tip = dTip profile
+        emptyRecord d = Just . Item d $ B.zeros 0
+
+-- | Alias for 'putItem'.
+(!) :: String -> (Desc -> Maybe Item) -> State (Maybe Item) ()
+(!) = putItem
+
+-- | Put subitem to compound item (stateful computation).
+--
+-- >    rec <- create cat $ do
+-- >        "010" ! fromRaw 0x0102
+-- >        "020" `putItem` fromRaw 0x0102
+-- >        (!) "030" $ fromRaw 0x0102
+-- >        putItem "040" $ fromRaw 0x0102
+--
+putItem :: String -> (Desc -> Maybe Item) -> State (Maybe Item) ()
+putItem name toItem = state $ \i -> ((),newItem i) where
+    newItem Nothing = Nothing
+    newItem (Just parent) = case (dTip . iDsc $ parent) of
+        TCompound -> do
+            dsc <- lookup name [(dName d, d) | d <- dItems . iDsc $ parent]
+            let item = toItem dsc
+            childs parent
+                >>= return . Map.toList . Map.insert name item . Map.fromList 
+                >>= unChilds (iDsc parent)
+        _ -> Nothing
+
+-- | Delete subitem from compound item.
+delItem :: String -> State (Maybe Item) ()
+delItem = undefined
+
+-- convert functions: 
+
+fromBits :: B.Bits -> Desc -> Maybe Item
+fromBits val dsc@Desc {dLen=Length1 len} = do
+    guard (B.length val==len)
+    return $ Item dsc val
+fromBits val dsc = case (dTip dsc) of
+    TExplicit -> do
+        let (a,b) = divMod (B.length val) 8
+            ln = a+1
+            size = B.fromIntegral 8 ln
+        guard (b==0)
+        guard (ln<=255)
+        return $ Item dsc (size `mappend` val)
+    _ -> undefined -- TODO: take value, decode, encode, check
+
+-- | Convert from raw value (item size must be known).
+fromRaw :: Integral a => a -> Desc -> Maybe Item
+fromRaw val dsc@Desc {dLen=Length1 len} = return $ Item dsc (B.fromIntegral len val)
+fromRaw _ _ = Nothing
+
+-- | Convert from given values, convert each, then apply
+fromValues :: (a -> Desc -> Maybe Item) -> [(ItemName, a)] -> Desc -> Maybe Item
+fromValues f list parentDsc = case (dTip parentDsc) of
+    TItem -> do
+        let names1 = map dName items
+            names2 = map fst list
+            values = map snd list
+        guard (names1 == names2)
+        l <- sequence [f val d | (val,d) <- zip values items]
+        return $ Item parentDsc (mconcat . map iBits $ l)
+    TCompound -> do
+        let transform = foldr (>>) noChange transforms
+            noChange = state $ \i -> ((), i)
+            transforms = [putItem name (f val) | (name,val) <- list]
+        create parentDsc transform
+    _ -> Nothing -- TODO define function for other types
+    where 
+        items = dItems parentDsc
+
+-- | Get bits.
+toBits :: Item -> Maybe B.Bits
+toBits = Just . iBits
+
+-- | Get raw value.
+toRaw :: Integral a => Item -> Maybe a
+toRaw = Just . B.toIntegral . iBits
 
