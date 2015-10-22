@@ -6,16 +6,14 @@
 --
 -- This module provides encoder/decoder for Asterix data.
 --
--- This module is intended to be imported qualified, e.g.
---
--- > import qualified Data.Asterix as A
+-- > import Data.Asterix as A
 --
 -- Examples:
 --
 --      * parse XML
 --  
 -- >        s <- readFile "path/to/catXY.xml"
--- >        let c = A.categoryDescription s
+-- >        let c = categoryDescription s
 --
 --      * parse many XML files, keep only latest revision of each defined category,
 --        force evaluation
@@ -41,15 +39,17 @@
 -- >
 -- >        print $ parse datablock
 --
+--      * decode items
+--
 --          TODO
 --
 --      * building items
 --
 -- >        catXY <- ...
 -- >        rec <- create catXY $ do
--- >            "010" ! fromBits (B.fromIntegral 16 0x0102)
--- >            "020" ! fromRaw 0x0203
--- >            "030" ! fromValues fromRaw [("SAC", 0x01), ("SIC", 0x02)]
+-- >            "010" <! fromBits (B.fromIntegral 16 0x0102)
+-- >            "020" <! fromRaw 0x0203
+-- >            "030" <! fromValues fromRaw [("SAC", 0x01), ("SIC", 0x02)]
 -- >           
 -- >        rec <- fromValues fromRaw [("010", 0x0102)] catXY
 --
@@ -95,21 +95,19 @@ module Data.Asterix
     , unChilds
 
     -- * Building items
-    , create, (!), putItem, delItem
+    , create, (<!), putItem, delItem
 
     -- * Converters: value -> Maybe Item
     , fromBits
     , fromRaw
-    --, fromIntegral
-    --, fromFloat
+    --, fromNatural
     --, fromString
     , fromValues
 
     -- * Converters: Item -> Maybe value
     , toBits
     , toRaw
-    -- , toIntegral
-    --, toFloat
+    , toNatural
     --, toString
     --, toValues
 
@@ -119,6 +117,7 @@ module Data.Asterix
 
     -- * Expression evaluation
     , eval
+    , EValue(..)
 
 ) where
 
@@ -136,7 +135,7 @@ import qualified Text.XML.Light as X
 import Text.XML.Light.Lexer (XmlSource)
 
 import qualified Data.BitString as B
-import Data.Asterix.Expression (eval)
+import Data.Asterix.Expression
 
 -- for debug purposes
 --import Debug.Trace
@@ -218,10 +217,10 @@ instance Read Edition where
 -- | Length of asterix item
 data Length = Length0 | Length1 Int | Length2 Int Int deriving (Show, Read, Eq)
 
-type Lsb = Double
+type Lsb = EValue
 type Unit = String
-type Min = Double
-type Max = Double
+type Min = EValue
+type Max = EValue
 
 data Value = 
     VRaw
@@ -643,15 +642,15 @@ create profile transform
         emptyRecord d = Just . Item d $ B.zeros 0
 
 -- | Alias for 'putItem'.
-(!) :: String -> (Desc -> Maybe Item) -> State (Maybe Item) ()
-(!) = putItem
+(<!) :: String -> (Desc -> Maybe Item) -> State (Maybe Item) ()
+(<!) = putItem
 
 -- | Put subitem to compound item (stateful computation).
 --
 -- >    rec <- create cat $ do
 -- >        "010" ! fromRaw 0x0102
 -- >        "020" `putItem` fromRaw 0x0102
--- >        (!) "030" $ fromRaw 0x0102
+-- >        (<!) "030" $ fromRaw 0x0102
 -- >        putItem "040" $ fromRaw 0x0102
 --
 putItem :: String -> (Desc -> Maybe Item) -> State (Maybe Item) ()
@@ -717,4 +716,29 @@ toBits = Just . iBits
 -- | Get raw value.
 toRaw :: Integral a => Item -> Maybe a
 toRaw = Just . B.toIntegral . iBits
+
+-- | Get item's natural value.
+toNatural :: Item -> Maybe EValue
+toNatural item = do
+    val <- case (dValue . iDsc $ item) of
+        VDecimal lsb _ mmin mmax -> do
+            return (raw lsb) >>= chk mmin (<) >>= chk mmax (>) 
+        VUnsignedDecimal lsb _ mmin mmax -> do
+            return (raw lsb) >>= plus >>= chk mmin (<) >>= chk mmax (>)
+        VInteger _ mmin mmax -> do
+            return (raw 1) >>= chk mmin (<) >>= chk mmax (>) 
+        VUnsignedInteger _ mmin mmax -> do
+            return (raw 1) >>= plus >>= chk mmin (<) >>= chk mmax (>)
+        _ -> Nothing
+    return val
+    where
+        raw lsb = lsb * B.toIntegral b
+        b = iBits item
+        chk Nothing _ val = Just val
+        chk (Just limit) cmp val
+            | val `cmp` limit = Nothing
+            | otherwise = Just val
+        plus val
+            | val >= 0 = Just val
+            | otherwise = Nothing
 

@@ -15,7 +15,7 @@ import Test.Framework.Providers.QuickCheck2 (testProperty)
 import Test.QuickCheck
 import Test.HUnit
 
-import Data.Asterix
+import Data.Asterix as A
 import qualified Data.BitString as B
 
 xmldir = (</> "xml") $ dropFileName __FILE__
@@ -165,7 +165,7 @@ testCreate = do
                     putItem "010" $ fromValues fromRaw [("SAC", 0x01), ("SIC", 0x02)]
 
         rec1d = create cat0'' $ do
-                    "010" ! fromRaw 0x0102
+                    "010" <! fromRaw 0x0102
 
         rec1e = create cat0'' $ do
                     "010" `putItem` fromRaw 0x0102
@@ -196,7 +196,24 @@ testGet :: Assertion
 testGet = do
     cat0 <- readFile (xmldir </> "cat000_1.2.xml") >>= return . categoryDescription
     let profiles = Map.fromList [(cCat c, c) | c<-(rights [cat0])]
-    return ()
+        (Right cat0') = cat0
+        (Just cat0'') = uapByName cat0' "uap"
+        
+        rec = create cat0'' $ do
+            "030" <! fromRaw 256
+
+        Just val = rec >>= child "030" >>= toNatural
+
+    assertEqual "double" 2.0 val
+    assertEqual "double" (val == 2.0) True
+    assertEqual "double" (2.0 == val) True
+    assertEqual "double" (val > 1.9) True
+    assertEqual "double" (1.9 < val) True
+    assertEqual "double" (val >= 1.9) True
+    assertEqual "double" (val < 2.1) True
+    assertEqual "double" (val <= 2.1) True
+    assertEqual "double" (val /= 0) True
+    assertEqual "double" (val /= 0.0) True
 
 testSizeOf :: Assertion
 testSizeOf = do

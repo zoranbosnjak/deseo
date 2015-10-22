@@ -3,8 +3,10 @@ module Main where
 import Test.Framework (defaultMain, testGroup)
 import Test.Framework.Providers.HUnit (testCase)
 import Test.HUnit
+import Test.Framework.Providers.QuickCheck2 (testProperty)
+import qualified Test.QuickCheck as QC
 
-import Data.Asterix (eval)
+import Data.Asterix
 
 main = defaultMain tests
 
@@ -17,6 +19,10 @@ tests = [
                 testCase "good" complexGood
                 , testCase "bad" complexBad
 
+        ]
+        , testGroup "Functions" [
+                testProperty "pow1" testPow1
+                , testProperty "pow2" testPow2
         ]
     ]
 
@@ -53,4 +59,19 @@ complexBad = do
     nok "pow()"
     nok "pow(2)"
     nok "-180.0pow(0x02, 23)"
+
+testPow1 :: Integer -> QC.NonNegative Integer -> Bool
+testPow1 a (QC.NonNegative b) =
+    let s = "pow("++(show a)++","++(show b)++")"
+        Just (EInteger val) = eval s
+        expected = a^b
+    in val==expected
+
+testPow2 :: Integer -> QC.Positive Integer -> Bool
+testPow2 a (QC.Positive nb) =
+    let b = (-nb)
+        s = "pow("++(show a)++","++(show b)++")"
+        Just (EDouble val) = eval s
+        expected = 1.0 / (fromInteger (a^(-b)))
+    in val==expected
 
