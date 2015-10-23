@@ -17,9 +17,9 @@
 -- >    Bits 100.....
 -- >    >>> B.take 2 $ B.pack [True, False, False]
 -- >    Bits 10......
--- >    >>> B.fromIntegral 16 0x0102
+-- >    >>> B.fromXIntegral 16 0x0102
 -- >    Bits 00000001 00000010
--- >    >>> B.toIntegral $ B.pack [True, False]
+-- >    >>> B.toUIntegral $ B.pack [True, False]
 -- >    2
 --
 
@@ -41,10 +41,11 @@ module Data.BitString (
     , unpack
     , null
     , checkAligned
+    , complement
 
     -- * Convert functions
-    , fromIntegral
-    , toIntegral
+    , fromXIntegral
+    , toIntegral, toUIntegral
     , fromByteString
     , toByteString
 ) where
@@ -125,15 +126,15 @@ null (Bits b) = P.null b
 
 -- | Return 'n' bits of all zero values.
 zeros :: Int -> Bits
-zeros n = fromIntegral n (0::Integer)
+zeros n = fromXIntegral n (0::Integer)
 
 -- | Generate bitstring of given bit length and value,
 -- for example:
 --
 -- >    bits 16 0x1234
 --
-fromIntegral :: Integral a => Int -> a -> Bits
-fromIntegral n val = Bits . map toBool $ f n val [] where
+fromXIntegral :: Integral a => Int -> a -> Bits
+fromXIntegral n val = Bits . map toBool $ f n val [] where
     f 0 _ acc = acc
     f n' val' acc = f (n'-1) a (b:acc) where
         (a,b) = divMod val' 2
@@ -151,9 +152,16 @@ boolVal :: Num a => Bool -> a
 boolVal False = 0
 boolVal True = 1
 
--- | Convert bits to unsigned number.
+-- | Convert bits to signed number.
 toIntegral :: Num a => Bits -> a
-toIntegral (Bits b) = sum . zipWith (*) factors . map boolVal . reverse $ b where
+toIntegral b
+    | null b = 0
+    | (head . unpack $ b) == False = toUIntegral b
+    | otherwise = -((toUIntegral $ complement b)+1)
+
+-- | Convert bits to unsigned number.
+toUIntegral :: Num a => Bits -> a
+toUIntegral (Bits b) = sum . zipWith (*) factors . map boolVal . reverse $ b where
     factors = map (2^) ([0..]::[Int])
 
 -- | Convert bytestring to Bits.
@@ -171,4 +179,8 @@ toByteString bs = do
         break8 s = a : break8 b where (a,b) = splitAt 8 s
         toWord :: [Bool] -> Word8
         toWord s = sum $ zipWith (*) (map (2^) ([7,6..0]::[Int])) (map boolVal s)
+
+-- | Reverse all the bits.
+complement :: Bits -> Bits
+complement (Bits b) = Bits $ map not b
 

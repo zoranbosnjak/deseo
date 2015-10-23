@@ -29,7 +29,7 @@
 --
 -- >        import qualified Data.BitString as B
 -- >
--- >        let datablock = B.fromIntegral 48 0x000006800203
+-- >        let datablock = B.fromXIntegral 48 0x000006800203
 -- >
 -- >        profiles <- ...
 -- >        let parse db = return db
@@ -47,7 +47,7 @@
 --
 -- >        catXY <- ...
 -- >        rec <- create catXY $ do
--- >            "010" <! fromBits (B.fromIntegral 16 0x0102)
+-- >            "010" <! fromBits (B.fromXIntegral 16 0x0102)
 -- >            "020" <! fromRaw 0x0203
 -- >            "030" <! fromValues fromRaw [("SAC", 0x01), ("SIC", 0x02)]
 -- >           
@@ -515,8 +515,8 @@ sizeOf _ _ = Nothing
 datablock :: Cat -> [Item] -> DataBlock
 datablock cat items = DataBlock cat bs where
     bs = c `mappend` ln `mappend` records
-    c = B.fromIntegral 8 $ toInteger cat
-    ln = B.fromIntegral 16 $ (B.length records `div` 8) + 3
+    c = B.fromXIntegral 8 $ toInteger cat
+    ln = B.fromXIntegral 16 $ (B.length records `div` 8) + 3
     records = mconcat $ map encode items
 
 encode = undefined
@@ -679,7 +679,7 @@ fromBits val dsc = case (dTip dsc) of
     TExplicit -> do
         let (a,b) = divMod (B.length val) 8
             ln = a+1
-            size = B.fromIntegral 8 ln
+            size = B.fromXIntegral 8 ln
         guard (b==0)
         guard (ln<=255)
         return $ Item dsc (size `mappend` val)
@@ -687,7 +687,7 @@ fromBits val dsc = case (dTip dsc) of
 
 -- | Convert from raw value (item size must be known).
 fromRaw :: Integral a => a -> Desc -> Maybe Item
-fromRaw val dsc@Desc {dLen=Length1 len} = return $ Item dsc (B.fromIntegral len val)
+fromRaw val dsc@Desc {dLen=Length1 len} = return $ Item dsc (B.fromXIntegral len val)
 fromRaw _ _ = Nothing
 
 -- | Convert from given values, convert each, then apply

@@ -45,7 +45,7 @@ bits = do
     eq 2 2 [True,False]
     eq 2 3 [True,True]
     where
-        eq n a exp = assertEqual ((show n) ++ "," ++ (show a)) exp (B.unpack $ B.fromIntegral n a)
+        eq n a exp = assertEqual ((show n) ++ "," ++ (show a)) exp (B.unpack $ B.fromXIntegral n a)
 
 pack1 :: [Bool] -> Bool
 pack1 s = ((B.unpack . B.pack $ s) == s)
@@ -65,9 +65,16 @@ drop' n b = (B.drop n b) == (B.pack . drop n . B.unpack $ b)
 
 integral' :: Assertion
 integral' = do
-    assertEqual "to integral" 2 (B.toIntegral . B.pack $ [True,False])
+    assertEqual "to integral" 1 (B.toIntegral . B.pack $ [False,True])
+    assertEqual "to uintegral" 1 (B.toUIntegral . B.pack $ [False,True])
+    assertEqual "to integral" (-2) (B.toIntegral . B.pack $ [True,False])
+    assertEqual "to uintegral" 2 (B.toUIntegral . B.pack $ [True,False])
+    assertEqual "to integral" (-1) (B.toIntegral . B.pack $ [True,True])
+    assertEqual "to uintegral" 3 (B.toUIntegral . B.pack $ [True,True])
     assertEqual "to integral" 2 (B.toIntegral . B.pack $ [False,True,False])
+    assertEqual "to uintegral" 2 (B.toUIntegral . B.pack $ [False,True,False])
     assertEqual "to integral" 0 (B.toIntegral . B.pack $ [False,False,False])
+    assertEqual "to uintegral" 0 (B.toUIntegral . B.pack $ [False,False,False])
 
 bytestring' :: [Word8] -> Bool
 bytestring' s = (fromJust . B.toByteString . B.fromByteString . S.pack $ s) == (S.pack s)

@@ -72,8 +72,8 @@ readBad = do
 dbdecode :: Assertion
 dbdecode = do
     let x0 = B.pack []
-        x1 = B.fromIntegral (8*11) 0x02000bf0931702b847147e
-        x2 = B.fromIntegral (8*10) 0x01000501020200050304
+        x1 = B.fromXIntegral (8*11) 0x02000bf0931702b847147e
+        x2 = B.fromXIntegral (8*10) 0x01000501020200050304
 
     assertEqual "0 datablocks" (Just []) (toDataBlocks x0)
 
@@ -83,8 +83,8 @@ dbdecode = do
 
     assertEqual "2 datablocks"
         (Just [
-            DataBlock {dbCat=1, dbData=(B.fromIntegral 16 0x0102)}
-            , DataBlock {dbCat=2, dbData=(B.fromIntegral 16 0x0304)}
+            DataBlock {dbCat=1, dbData=(B.fromXIntegral 16 0x0102)}
+            , DataBlock {dbCat=2, dbData=(B.fromXIntegral 16 0x0304)}
             ])
         (toDataBlocks x2)
 
@@ -102,15 +102,15 @@ splitRec = do
                 >>= return . join
                 >>= return . map iBits
 
-        d0 = B.fromIntegral 32 0x000003
-        d1a = B.fromIntegral 32 0x00000400
-        d1b = B.fromIntegral 48 0x000006800203
-        d2 = B.fromIntegral 72 0x000009800203800405
+        d0 = B.fromXIntegral 32 0x000003
+        d1a = B.fromXIntegral 32 0x00000400
+        d1b = B.fromXIntegral 48 0x000006800203
+        d2 = B.fromXIntegral 72 0x000009800203800405
 
     assertEqual "0 rec" Nothing (parse d0)
-    assertEqual "1a rec" (Just [B.fromIntegral 8 0]) (parse d1a)
-    assertEqual "1b rec" (Just [B.fromIntegral 24 0x800203]) (parse d1b)
-    assertEqual "2 rec" (Just [B.fromIntegral 24 0x800203, B.fromIntegral 24 0x800405]) (parse d2)
+    assertEqual "1a rec" (Just [B.fromXIntegral 8 0]) (parse d1a)
+    assertEqual "1b rec" (Just [B.fromXIntegral 24 0x800203]) (parse d1b)
+    assertEqual "2 rec" (Just [B.fromXIntegral 24 0x800203, B.fromXIntegral 24 0x800405]) (parse d2)
 
 childs' :: Assertion
 childs' = do
@@ -121,15 +121,15 @@ childs' = do
                 >>= mapM (toRecords profiles)
                 >>= return . join
 
-        d = B.fromIntegral 48 0x000006800203
+        d = B.fromXIntegral 48 0x000006800203
         Just rr = parse d
         r = head rr
         Just (i010:i020:_) = childs r
         Just i010' = snd i010
         Just (sac:sic:_) = childs i010'
 
-        realSac = B.fromIntegral 8 0x02
-        realSic = B.fromIntegral 8 0x03
+        realSac = B.fromXIntegral 8 0x02
+        realSic = B.fromXIntegral 8 0x03
 
     assertEqual "i010" ("010",True) (fst i010, isJust . snd $ i010)
     assertEqual "i020" ("020",False) (fst i020, isJust . snd $ i020)
@@ -156,7 +156,7 @@ testCreate = do
         rec0 = create cat0'' $ return ()
 
         rec1a = create cat0'' $ do
-                    putItem "010" $ fromBits (B.fromIntegral 16 0x0102)
+                    putItem "010" $ fromBits (B.fromXIntegral 16 0x0102)
 
         rec1b = create cat0'' $ do
                     putItem "010" $ fromRaw 0x0102
