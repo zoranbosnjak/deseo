@@ -384,8 +384,8 @@ toDataBlocks bs
     | B.null bs = Just []
     | otherwise = do
         x <- B.checkAligned bs
-        cat <- return x >>= B.takeMaybe 8 >>= return . B.toIntegral
-        len <- return x >>= B.dropMaybe 8 >>= B.takeMaybe 16 >>= return . B.toIntegral
+        cat <- return x >>= B.takeMaybe 8 >>= return . B.toUIntegral
+        len <- return x >>= B.dropMaybe 8 >>= B.takeMaybe 16 >>= return . B.toUIntegral
         y <- return x >>= B.takeMaybe (len*8) >>= B.dropMaybe 24
 
         let db = DataBlock cat y
@@ -473,7 +473,7 @@ sizeOf Desc {dTip=TExtended, dLen=Length2 n1 n2} b = do
 -- size of Repetitive
 sizeOf d@Desc {dTip=TRepetitive} b = do
     s8 <- checkSize 8 b
-    let rep = B.toIntegral . B.take s8 $ b
+    let rep = B.toUIntegral . B.take s8 $ b
         b' = B.drop s8 b
     getSubitems rep b' 8
     where
@@ -486,7 +486,7 @@ sizeOf d@Desc {dTip=TRepetitive} b = do
 -- size of Explicit
 sizeOf Desc {dTip=TExplicit} b = do
     s8 <- checkSize 8 b
-    let val = B.toIntegral . B.take s8 $ b
+    let val = B.toUIntegral . B.take s8 $ b
     case val of
         0 -> Nothing
         _ -> checkSize (8*val) b
@@ -715,30 +715,25 @@ toBits = Just . iBits
 
 -- | Get raw value.
 toRaw :: Integral a => Item -> Maybe a
-toRaw = Just . B.toIntegral . iBits
+toRaw = Just . B.toUIntegral . iBits
 
 -- | Get item's natural value.
 toNatural :: Item -> Maybe EValue
 toNatural item = do
-    val <- case (dValue . iDsc $ item) of
-        VDecimal lsb _ mmin mmax -> do
-            return (raw lsb) >>= chk mmin (<) >>= chk mmax (>) 
-        VUnsignedDecimal lsb _ mmin mmax -> do
-            return (raw lsb) >>= plus >>= chk mmin (<) >>= chk mmax (>)
-        VInteger _ mmin mmax -> do
-            return (raw 1) >>= chk mmin (<) >>= chk mmax (>) 
-        VUnsignedInteger _ mmin mmax -> do
-            return (raw 1) >>= plus >>= chk mmin (<) >>= chk mmax (>)
-        _ -> Nothing
-    return val
-    where
-        raw lsb = lsb * B.toIntegral b
-        b = iBits item
+    let b = iBits item
+        uval = B.toUIntegral b
+        sval = B.toSIntegral b
         chk Nothing _ val = Just val
         chk (Just limit) cmp val
             | val `cmp` limit = Nothing
             | otherwise = Just val
-        plus val
-            | val >= 0 = Just val
-            | otherwise = Nothing
+
+    (val,mmin,mmax) <- case (dValue . iDsc $ item) of
+        VDecimal lsb _ mmin mmax -> Just (lsb*sval, mmin, mmax)
+        VUnsignedDecimal lsb _ mmin mmax -> Just (lsb*uval, mmin, mmax)
+        VInteger _ mmin mmax -> Just (sval, mmin, mmax)
+        VUnsignedInteger _ mmin mmax -> Just (uval, mmin, mmax)
+        _ -> Nothing
+
+    return val >>= chk mmin (<) >>= chk mmax (>)
 

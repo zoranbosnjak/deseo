@@ -39,7 +39,9 @@ tests = [
             testCase "create" testCreate
         ],
         testGroup "convert" [
-            testCase "get" testGet
+            testCase "get1" testGet1
+            , testCase "get2a" testGet2a
+            , testCase "get2b" testGet2b
         ],
         testGroup "util" [
             testCase "sizeof" testSizeOf
@@ -192,28 +194,82 @@ testCreate = do
                     putItem "007" fromSpare
         -}
 
-testGet :: Assertion
-testGet = do
+testGet1 :: Assertion
+testGet1 = do
     cat0 <- readFile (xmldir </> "cat000_1.2.xml") >>= return . categoryDescription
     let profiles = Map.fromList [(cCat c, c) | c<-(rights [cat0])]
         (Right cat0') = cat0
         (Just cat0'') = uapByName cat0' "uap"
         
         rec = create cat0'' $ do
+            "010" <! fromValues fromRaw [("SAC", 0x01), ("SIC", 0x02)]
             "030" <! fromRaw 256
+            "031" <! fromValues fromRaw [("X", 0x01), ("Y", 0x02)]
 
-        Just val = rec >>= child "030" >>= toNatural
+        Just i030 = rec >>= child "030" >>= toNatural
 
-    assertEqual "double" 2.0 val
-    assertEqual "double" (val == 2.0) True
-    assertEqual "double" (2.0 == val) True
-    assertEqual "double" (val > 1.9) True
-    assertEqual "double" (1.9 < val) True
-    assertEqual "double" (val >= 1.9) True
-    assertEqual "double" (val < 2.1) True
-    assertEqual "double" (val <= 2.1) True
-    assertEqual "double" (val /= 0) True
-    assertEqual "double" (val /= 0.0) True
+    assertEqual "double" 2.0 i030
+    assertEqual "double" (i030 == 2.0) True
+    assertEqual "double" (2.0 == i030) True
+    assertEqual "double" (i030 > 1.9) True
+    assertEqual "double" (1.9 < i030) True
+    assertEqual "double" (i030 >= 1.9) True
+    assertEqual "double" (i030 < 2.1) True
+    assertEqual "double" (i030 <= 2.1) True
+    assertEqual "double" (i030 /= 0) True
+    assertEqual "double" (i030 /= 0.0) True
+
+testGet2a :: Assertion
+testGet2a = do
+    cat0 <- readFile (xmldir </> "cat000_1.2.xml") >>= return . categoryDescription
+    let profiles = Map.fromList [(cCat c, c) | c<-(rights [cat0])]
+        (Right cat0') = cat0
+        (Just cat0'') = uapByName cat0' "uap"
+        ae = assertEqual
+        
+        rec = create cat0'' $ do
+            "030" <! fromRaw 256
+            "031" <! fromValues fromRaw [("X", 0x01), ("Y", 0x02)]
+            "041" <! fromValues fromRaw [("X", 0x01), ("Y", 0x02)]
+            "042" <! fromValues fromRaw [("X", 0x01), ("Y", 0x02)]
+
+        Just i030 = rec >>= child "030" >>= toNatural
+        Just i031x = rec >>= childR ["031","X"] >>= toNatural
+        Just i031y = rec >>= childR ["031","Y"] >>= toNatural
+        Just i041x = rec >>= childR ["041","X"] >>= toNatural
+        Just i042x = rec >>= childR ["042","X"] >>= toNatural
+
+    ae "030" (EDouble 2) i030
+    ae "031x" (EDouble 0.5) i031x
+    ae "031y" (EDouble 1.0) i031y
+    ae "i041x" (EInteger 1) i041x
+    ae "i042x" (EInteger 1) i042x
+
+testGet2b :: Assertion
+testGet2b = do
+    cat0 <- readFile (xmldir </> "cat000_1.2.xml") >>= return . categoryDescription
+    let profiles = Map.fromList [(cCat c, c) | c<-(rights [cat0])]
+        (Right cat0') = cat0
+        (Just cat0'') = uapByName cat0' "uap"
+        ae = assertEqual
+        
+        rec = create cat0'' $ do
+            "030" <! fromRaw 0xFFFFFF
+            "031" <! fromValues fromRaw [("X", 0xFFFFFF), ("Y", 0xFFFFFF)]
+            "041" <! fromValues fromRaw [("X", 0xFF), ("Y", 0xFF)]
+            "042" <! fromValues fromRaw [("X", 0xFF), ("Y", 0xFF)]
+
+        Just i030 = rec >>= child "030" >>= toNatural
+        Just i031x = rec >>= childR ["031","X"] >>= toNatural
+        Just i031y = rec >>= childR ["031","Y"] >>= toNatural
+        Just i041x = rec >>= childR ["041","X"] >>= toNatural
+        Just i042x = rec >>= childR ["042","X"] >>= toNatural
+
+    ae "030" (EDouble (0xffffff/128)) i030
+    ae "031x" (EDouble (-0.5)) i031x
+    ae "031y" (EDouble (-0.5)) i031y
+    ae "i041x" (EInteger (-1)) i041x
+    ae "i042x" (EInteger 255) i042x
 
 testSizeOf :: Assertion
 testSizeOf = do

@@ -26,6 +26,42 @@
             </convert>
         </item>
 
+        <item name="031">
+            <dsc>XY decimal</dsc>
+            <items>
+                <item name="X" type="Fixed"><len>24</len>
+                    <convert>
+                        <type>decimal</type>
+                        <lsb>0.5</lsb>
+                        <unit>m</unit>
+                    </convert>
+                </item>
+                <item name="Y" type="Fixed"><len>24</len>
+                    <convert>
+                        <type>decimal</type>
+                        <lsb>0.5</lsb>
+                        <unit>m</unit>
+                    </convert>
+                </item>
+            </items>
+        </item>
+
+        <item name="041">
+            <dsc>XY signed</dsc>
+            <items>
+                <item name="X" type="Fixed"><len>8</len><convert><type>integer</type></convert></item>
+                <item name="Y" type="Fixed"><len>8</len><convert><type>integer</type></convert></item>
+            </items>
+        </item>
+
+        <item name="042">
+            <dsc>XY unsigned</dsc>
+            <items>
+                <item name="X" type="Fixed"><len>8</len><convert><type>unsigned integer</type></convert></item>
+                <item name="Y" type="Fixed"><len>8</len><convert><type>unsigned integer</type></convert></item>
+            </items>
+        </item>
+
     </items>
 
     <uaps>
@@ -33,6 +69,9 @@
             <item>010</item>
             <item>020</item>
             <item>030</item>
+            <item>031</item>
+            <item>041</item>
+            <item>042</item>
         </uap>
     </uaps>
 </category>

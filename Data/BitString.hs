@@ -45,7 +45,7 @@ module Data.BitString (
 
     -- * Convert functions
     , fromXIntegral
-    , toIntegral, toUIntegral
+    , toSIntegral, toUIntegral
     , fromByteString
     , toByteString
 ) where
@@ -153,8 +153,8 @@ boolVal False = 0
 boolVal True = 1
 
 -- | Convert bits to signed number.
-toIntegral :: Num a => Bits -> a
-toIntegral b
+toSIntegral :: Num a => Bits -> a
+toSIntegral b
     | null b = 0
     | (head . unpack $ b) == False = toUIntegral b
     | otherwise = -((toUIntegral $ complement b)+1)
