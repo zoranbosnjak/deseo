@@ -28,6 +28,7 @@ tests = [
                 , testProperty "drop" drop'
                 , testProperty "zeros" zeros'
                 , testCase "maybe" takeDropMaybe
+                , testCase "any" testAny
         ]
         , testGroup "convert" [
                 testCase "integral" integral'
@@ -101,4 +102,20 @@ takeDropMaybe = do
     assertEqual "drop1" (Just $ B.pack [False]) (B.dropMaybe 1 b)
     assertEqual "drop2" (Just $ B.pack []) (B.dropMaybe 2 b)
     assertEqual "drop3" Nothing (B.dropMaybe 3 b)
+
+testAny :: Assertion
+testAny = do
+    assertEqual "all" True (B.allSet $ B.pack [])
+    assertEqual "all" True (B.allSet $ B.pack [True])
+    assertEqual "all" True (B.allSet $ B.pack [True,True])
+    assertEqual "all" False (B.allSet $ B.pack [True,False])
+    assertEqual "all" False (B.allSet $ B.pack [False,True])
+    assertEqual "all" False (B.allSet $ B.pack [False,False])
+
+    assertEqual "any" False (B.anySet $ B.pack [])
+    assertEqual "any" True (B.anySet $ B.pack [True])
+    assertEqual "any" True (B.anySet $ B.pack [True,True])
+    assertEqual "any" True (B.anySet $ B.pack [True,False])
+    assertEqual "any" True (B.anySet $ B.pack [False,True])
+    assertEqual "any" False (B.anySet $ B.pack [False,False])
 

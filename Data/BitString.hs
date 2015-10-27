@@ -42,6 +42,7 @@ module Data.BitString (
     , null
     , checkAligned
     , complement
+    , anySet, allSet
 
     -- * Convert functions
     , fromXIntegral
@@ -183,4 +184,12 @@ toByteString bs = do
 -- | Reverse all the bits.
 complement :: Bits -> Bits
 complement (Bits b) = Bits $ map not b
+
+-- | Is any bit set?
+anySet :: Bits -> Bool
+anySet = P.any (==True) . unpack
+
+-- | Are all bits set?
+allSet :: Bits -> Bool
+allSet = P.all (==True) . unpack
 
