@@ -37,11 +37,13 @@ tests = [
         ],
         testGroup "create" [
             testCase "create" testCreate
+            , testCase "limits" testLimits
         ],
         testGroup "convert" [
             testCase "get1" testGet1
             , testCase "get2a" testGet2a
             , testCase "get2b" testGet2b
+            , testCase "set1" testSet1
         ],
         testGroup "util" [
             testCase "sizeof" testSizeOf
@@ -271,6 +273,32 @@ testGet2b = do
     ae "i041x" (EInteger (-1)) i041x
     ae "i042x" (EInteger 255) i042x
 
+testSet1 :: Assertion
+testSet1 = do
+    cat0 <- readFile (xmldir </> "cat000_1.2.xml") >>= return . categoryDescription
+    let profiles = Map.fromList [(cCat c, c) | c<-(rights [cat0])]
+        (Right cat0') = cat0
+        (Just cat0'') = uapByName cat0' "uap"
+        ae = assertEqual
+        
+        rec = create cat0'' $ do
+            "030" <! fromRaw (-1)
+            "031" <! fromValues fromNatural [("X", 2), ("Y", (-2))]
+            "041" <! fromValues fromNatural [("X", (-3)), ("Y", 4)]
+            "042" <! fromValues fromNatural [("X", 255), ("Y", 6)]
+
+        Just i030 = rec >>= child "030" >>= toNatural
+        Just i031x = rec >>= childR ["031","X"] >>= toNatural
+        Just i031y = rec >>= childR ["031","Y"] >>= toNatural
+        Just i041x = rec >>= childR ["041","X"] >>= toNatural
+        Just i042x = rec >>= childR ["042","X"] >>= toNatural
+
+    ae "030" (EDouble (0xffffff/128)) i030
+    ae "031x" (EDouble (2)) i031x
+    ae "031y" (EDouble (-2)) i031y
+    ae "i041x" (EInteger (-3)) i041x
+    ae "i042x" (EInteger 255) i042x
+
 testSizeOf :: Assertion
 testSizeOf = do
     
@@ -280,4 +308,35 @@ testSizeOf = do
         (Just cat0'') = uapByName cat0' "uap"
 
     assertEqual "empty" (Just 0) (sizeOf cat0'' (B.pack []))
+
+testLimits :: Assertion
+testLimits = do
+    cat0 <- readFile (xmldir </> "cat000_1.2.xml") >>= return . categoryDescription
+    let profiles = Map.fromList [(cCat c, c) | c<-(rights [cat0])]
+        (Right cat0') = cat0
+        (Just cat0'') = uapByName cat0' "uap"
+        
+        rec1 = create cat0'' $ do
+            "031" <! fromValues fromNatural [("X", 100), ("Y", (-100))]
+
+        rec2a = create cat0'' $ do
+            "031" <! fromValues fromNatural [("X", 100.1), ("Y", (-100))]
+
+        rec2b = create cat0'' $ do
+            "031" <! fromValues fromNatural [("X", 100), ("Y", (-100.1))]
+
+        rec3a = create cat0'' $ do
+            "031" <! fromValues fromRaw [("X", 200), ("Y", (-500))]
+
+        rec3b = create cat0'' $ do
+            "031" <! fromValues fromRaw [("X", 500), ("Y", (-200))]
+
+    assertEqual "valid" True (isJust $ rec1 >>= childR ["031","X"] >>= toNatural)
+    assertEqual "invalidx" True (isNothing $ rec2a >>= childR ["031","X"] >>= toNatural)
+    assertEqual "invalidy" True (isNothing $ rec2b >>= childR ["031","X"] >>= toNatural)
+
+    assertEqual "valid" (Just 100) (rec3a >>= childR ["031","X"] >>= toNatural)
+    assertEqual "invalidy" Nothing (rec3a >>= childR ["031","Y"] >>= toNatural)
+    assertEqual "invalidx" Nothing (rec3b >>= childR ["031","X"] >>= toNatural)
+    assertEqual "valid" (Just (-100)) (rec3b >>= childR ["031","Y"] >>= toNatural)
 

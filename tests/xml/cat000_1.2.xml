@@ -34,6 +34,7 @@
                         <type>decimal</type>
                         <lsb>0.5</lsb>
                         <unit>m</unit>
+                        <max>100</max>
                     </convert>
                 </item>
                 <item name="Y" type="Fixed"><len>24</len>
@@ -41,6 +42,7 @@
                         <type>decimal</type>
                         <lsb>0.5</lsb>
                         <unit>m</unit>
+                        <min>-100</min>
                     </convert>
                 </item>
             </items>

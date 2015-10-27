@@ -100,7 +100,7 @@ module Data.Asterix
     -- * Converters: value -> Maybe Item
     , fromBits
     , fromRaw
-    --, fromNatural
+    , fromNatural
     --, fromString
     , fromValues
 
@@ -109,7 +109,6 @@ module Data.Asterix
     , toRaw
     , toNatural
     --, toString
-    --, toValues
 
     -- * Util functions
     , sizeOf
@@ -642,15 +641,18 @@ create profile transform
         emptyRecord d = Just . Item d $ B.zeros 0
 
 -- | Alias for 'putItem'.
+--
+-- >    rec <- create cat $ do
+-- >        "010" <! fromRaw 0x0102
+-- >        (<!) "030" $ fromRaw 0x0102
+--
 (<!) :: String -> (Desc -> Maybe Item) -> State (Maybe Item) ()
 (<!) = putItem
 
 -- | Put subitem to compound item (stateful computation).
 --
 -- >    rec <- create cat $ do
--- >        "010" ! fromRaw 0x0102
 -- >        "020" `putItem` fromRaw 0x0102
--- >        (<!) "030" $ fromRaw 0x0102
 -- >        putItem "040" $ fromRaw 0x0102
 --
 putItem :: String -> (Desc -> Maybe Item) -> State (Maybe Item) ()
@@ -659,9 +661,10 @@ putItem name toItem = state $ \i -> ((),newItem i) where
     newItem (Just parent) = case (dTip . iDsc $ parent) of
         TCompound -> do
             dsc <- lookup name [(dName d, d) | d <- dItems . iDsc $ parent]
-            let item = toItem dsc
+            let maybeItem = toItem dsc
+            guard $ isJust maybeItem
             childs parent
-                >>= return . Map.toList . Map.insert name item . Map.fromList 
+                >>= return . Map.toList . Map.insert name maybeItem . Map.fromList 
                 >>= unChilds (iDsc parent)
         _ -> Nothing
 
@@ -670,6 +673,12 @@ delItem :: String -> State (Maybe Item) ()
 delItem = undefined
 
 -- convert functions: 
+
+_chkLimit :: Maybe t -> (a -> t -> Bool) -> a -> Maybe a
+_chkLimit Nothing _ val = Just val
+_chkLimit (Just limit) cmp val
+    | val `cmp` limit = Nothing
+    | otherwise = Just val
 
 fromBits :: B.Bits -> Desc -> Maybe Item
 fromBits val dsc@Desc {dLen=Length1 len} = do
@@ -689,6 +698,27 @@ fromBits val dsc = case (dTip dsc) of
 fromRaw :: Integral a => a -> Desc -> Maybe Item
 fromRaw val dsc@Desc {dLen=Length1 len} = return $ Item dsc (B.fromXIntegral len val)
 fromRaw _ _ = Nothing
+
+-- | Convert from natural value.
+fromNatural :: EValue -> Desc -> Maybe Item
+fromNatural val dsc@Desc {dLen=Length1 len} = do
+    let ival (EInteger x) = x
+        ival (EDouble x) = truncate x
+    (conv,mmin,mmax) <- case dValue dsc of
+        VDecimal lsb _ mmin mmax -> Just ((/lsb), mmin, mmax)
+        VUnsignedDecimal lsb _ mmin mmax ->
+            if val >= 0
+                then Just ((/lsb), mmin, mmax)
+                else Nothing
+        VInteger _ mmin mmax -> Just (id, mmin, mmax)
+        VUnsignedInteger _ mmin mmax ->
+            if val >= 0
+                then Just (id, mmin, mmax)
+                else Nothing
+        _ -> Nothing
+    val' <- return val >>= _chkLimit mmin (<) >>= _chkLimit mmax (>) >>= return . ival . conv
+    return $ Item dsc (B.fromXIntegral len val')
+fromNatural _ _ = Nothing
 
 -- | Convert from given values, convert each, then apply
 fromValues :: (a -> Desc -> Maybe Item) -> [(ItemName, a)] -> Desc -> Maybe Item
@@ -723,10 +753,6 @@ toNatural item = do
     let b = iBits item
         uval = B.toUIntegral b
         sval = B.toSIntegral b
-        chk Nothing _ val = Just val
-        chk (Just limit) cmp val
-            | val `cmp` limit = Nothing
-            | otherwise = Just val
 
     (val,mmin,mmax) <- case (dValue . iDsc $ item) of
         VDecimal lsb _ mmin mmax -> Just (lsb*sval, mmin, mmax)
@@ -734,6 +760,6 @@ toNatural item = do
         VInteger _ mmin mmax -> Just (sval, mmin, mmax)
         VUnsignedInteger _ mmin mmax -> Just (uval, mmin, mmax)
         _ -> Nothing
-
-    return val >>= chk mmin (<) >>= chk mmax (>)
+    
+    return val >>= _chkLimit mmin (<) >>= _chkLimit mmax (>)
 
