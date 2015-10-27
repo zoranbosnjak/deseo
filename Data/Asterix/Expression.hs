@@ -19,7 +19,7 @@ import Language.Python.Common.AST as A
 data EValue =
     EInteger Integer
     | EDouble Double
-    deriving (Eq, Ord, Show)
+    deriving (Show)
 
 -- | Convert to Double
 _toDouble :: EValue -> Double
@@ -55,6 +55,14 @@ instance Fractional EValue where
     fromRational = EDouble . fromRational
     recip (EInteger x) = EDouble . recip $ fromIntegral x
     recip (EDouble x) = EDouble $ recip x
+
+instance Eq EValue where
+    EInteger val1 == EInteger val2 = val1 == val2
+    val1 == val2 = _toDouble val1 == _toDouble val2
+
+instance Ord EValue where
+    compare (EInteger val1) (EInteger val2) = compare val1 val2
+    compare val1 val2 = compare (_toDouble val1) (_toDouble val2)
 
 -- | Parse and evaluate string expression.
 -- Examples:

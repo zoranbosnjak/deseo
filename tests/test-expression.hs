@@ -12,7 +12,8 @@ main = defaultMain tests
 
 tests = [
         testGroup "Simple" [
-                testCase "good" simpleGood
+                testCase "basic" testBasic
+                , testCase "good" simpleGood
                 , testCase "bad" simpleBad
             ]
         , testGroup "Complex" [
@@ -25,6 +26,34 @@ tests = [
                 , testProperty "pow2" testPow2
         ]
     ]
+
+testBasic :: Assertion
+testBasic = do
+    assertEqual "itoi" True $ (EInteger 2) > (EInteger 1)
+    assertEqual "itoi" True $ (EInteger 2) >= (EInteger 1)
+    assertEqual "itoi" True $ (EInteger 2) >= (EInteger 2)
+    assertEqual "itoi" True $ (EInteger 2) == (EInteger 2)
+    assertEqual "itoi" True $ (EInteger 1) /= (EInteger 2)
+    assertEqual "itoi" True $ (EInteger 1) < (EInteger 2)
+    assertEqual "itoi" True $ (EInteger 1) <= (EInteger 2)
+
+    assertEqual "itod" True $ (EInteger 2) > (EDouble 1)
+    assertEqual "itod" True $ (EInteger 2) >= (EDouble 1)
+    assertEqual "itod" True $ (EInteger 2) >= (EDouble 2)
+    assertEqual "itod" True $ (EInteger 2) == (EDouble 2)
+    assertEqual "itod" True $ (EInteger 1) /= (EDouble 2)
+    assertEqual "itod" True $ (EInteger 1) < (EDouble 2)
+    assertEqual "itod" True $ (EInteger 1) <= (EDouble 2)
+
+    assertEqual "dtoi" True $ (EDouble 2) > (EInteger 1)
+    assertEqual "dtoi" True $ (EDouble 2) >= (EInteger 1)
+    assertEqual "dtoi" True $ (EDouble 2) >= (EInteger 2)
+    assertEqual "dtoi" True $ (EDouble 2) == (EInteger 2)
+    assertEqual "dtoi" True $ (EDouble 1) /= (EInteger 2)
+    assertEqual "dtoi" True $ (EDouble 1) < (EInteger 2)
+    assertEqual "dtoi" True $ (EDouble 1) <= (EInteger 2)
+
+
 
 -- helper functions
 a === b = eq a b
