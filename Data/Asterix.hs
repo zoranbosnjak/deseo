@@ -76,7 +76,7 @@ module Data.Asterix
     -- * Datablock
     , DataBlock(..)
     , toDataBlocks
-    -- , datablock 
+    , datablock 
 
     -- * XML parsers
     , categoryDescription
@@ -154,8 +154,8 @@ data Tip = TItem
 -- | description + data
 data Item = Item {
         iDsc :: Desc 
-        ,iBits :: B.Bits 
-        }deriving (Show,Eq)
+        , iBits :: B.Bits 
+        } deriving (Show,Eq)
 
 -- | Asterix item description
 data Desc = Desc {  dName       :: ItemName
@@ -234,6 +234,14 @@ data DataBlock = DataBlock {
     dbCat :: Cat
     , dbData :: B.Bits
 } deriving (Eq, Show)
+
+--  | Create datablock
+datablock :: Cat -> [Item] -> DataBlock
+datablock cat items = DataBlock {dbCat=cat, dbData=bs} where
+    bs = c `mappend` ln `mappend` records
+    c = B.fromXIntegral 8 $ toInteger cat
+    ln = B.fromXIntegral 16 $ (B.length records `div` 8) + 3
+    records = mconcat $ map iBits items
 
 -- | Read xml content.
 categoryDescription :: XmlSource s => s -> Either String Category
@@ -508,18 +516,6 @@ sizeOf Desc {dTip=TCompound, dItems=items} b' = do
 
 -- size of unknown
 sizeOf _ _ = Nothing
-
---  | Create datablock
-{-
-datablock :: Cat -> [Item] -> DataBlock
-datablock cat items = DataBlock cat bs where
-    bs = c `mappend` ln `mappend` records
-    c = B.fromXIntegral 8 $ toInteger cat
-    ln = B.fromXIntegral 16 $ (B.length records `div` 8) + 3
-    records = mconcat $ map encode items
-
-encode = undefined
--}
 
 -- | Get subitem.
 --
