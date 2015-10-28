@@ -64,6 +64,18 @@
             </items>
         </item>
 
+        <item name="050" type="Extended">
+            <dsc>extended check</dsc>
+            <len>(16,8)</len>
+            <items>
+                <item name="X" type="Fixed"><len>10</len></item>
+                <item name="Y" type="Fixed"><len>5</len></item>
+                <item name="A" type="Fixed"><len>7</len></item>
+                <item name="B" type="Fixed"><len>4</len></item>
+                <item name="C" type="Fixed"><len>3</len></item>
+            </items>
+        </item>
+
     </items>
 
     <uaps>
@@ -74,6 +86,7 @@
             <item>031</item>
             <item>041</item>
             <item>042</item>
+            <item>050</item>
         </uap>
     </uaps>
 </category>

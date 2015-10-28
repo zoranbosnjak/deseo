@@ -47,6 +47,9 @@ tests = [
         ],
         testGroup "util" [
             testCase "sizeof" testSizeOf
+        ],
+        testGroup "types" [
+            testCase "extended" testExtended
         ]
     ]
 
@@ -339,4 +342,59 @@ testLimits = do
     assertEqual "invalidy" Nothing (rec3a >>= childR ["031","Y"] >>= toNatural)
     assertEqual "invalidx" Nothing (rec3b >>= childR ["031","X"] >>= toNatural)
     assertEqual "valid" (Just (-100)) (rec3b >>= childR ["031","Y"] >>= toNatural)
+
+testExtended :: Assertion
+testExtended = do
+    cat0 <- readFile (xmldir </> "cat000_1.2.xml") >>= return . categoryDescription
+    let profiles = Map.fromList [(cCat c, c) | c<-(rights [cat0])]
+        (Right cat0') = cat0
+        (Just cat0'') = uapByName cat0' "uap"
+        
+        rec1 = create cat0'' $ "050" <! fromValues fromRaw [("X", 1)]
+        rec2 = create cat0'' $ "050" <! fromValues fromRaw [("X", 1),("Y", 2)]
+        rec3 = create cat0'' $ "050" <! fromValues fromRaw [("X", 1),("Y", 2),("A",3)]
+        rec4 = create cat0'' $ "050" <! fromValues fromRaw [("X", 1),("Y", 2),("A",3),("B",4)]
+        rec5 = create cat0'' $ "050" <! fromValues fromRaw [("X", 1),("Y", 2),("A",3),("B",4),("C",5)]
+
+        Just c2 = rec2 >>= child "050" >>= childs
+        Just c5 = rec5 >>= child "050" >>= childs
+
+    assertEqual "X"     False   (isJust rec1)
+    assertEqual "XY"    True    (isJust rec2)
+    assertEqual "XYA"   True    (isJust rec3)
+    assertEqual "XYAB"  False   (isJust rec4)
+    assertEqual "XYABC" True    (isJust rec5)
+
+    assertEqual "len2"  5   (length c2)
+    assertEqual "len5"  5   (length c5)
+
+    assertEqual "X" Nothing     (rec1 >>= childR ["050","X"] >>= toRaw)
+    assertEqual "X" (Just 1)    (rec2 >>= childR ["050","X"] >>= toRaw)
+    assertEqual "X" (Just 1)    (rec3 >>= childR ["050","X"] >>= toRaw)
+    assertEqual "X" Nothing     (rec4 >>= childR ["050","X"] >>= toRaw)
+    assertEqual "X" (Just 1)    (rec5 >>= childR ["050","X"] >>= toRaw)
+
+    assertEqual "Y" Nothing     (rec1 >>= childR ["050","Y"] >>= toRaw)
+    assertEqual "Y" (Just 2)    (rec2 >>= childR ["050","Y"] >>= toRaw)
+    assertEqual "Y" (Just 2)    (rec3 >>= childR ["050","Y"] >>= toRaw)
+    assertEqual "Y" Nothing     (rec4 >>= childR ["050","Y"] >>= toRaw)
+    assertEqual "Y" (Just 2)    (rec5 >>= childR ["050","Y"] >>= toRaw)
+
+    assertEqual "A" Nothing     (rec1 >>= childR ["050","A"] >>= toRaw)
+    assertEqual "A" Nothing     (rec2 >>= childR ["050","A"] >>= toRaw)
+    assertEqual "A" (Just 3)    (rec3 >>= childR ["050","A"] >>= toRaw)
+    assertEqual "A" Nothing     (rec4 >>= childR ["050","A"] >>= toRaw)
+    assertEqual "A" (Just 3)    (rec5 >>= childR ["050","A"] >>= toRaw)
+
+    assertEqual "B" Nothing     (rec1 >>= childR ["050","B"] >>= toRaw)
+    assertEqual "B" Nothing     (rec2 >>= childR ["050","B"] >>= toRaw)
+    assertEqual "B" Nothing     (rec3 >>= childR ["050","B"] >>= toRaw)
+    assertEqual "B" Nothing     (rec4 >>= childR ["050","B"] >>= toRaw)
+    assertEqual "B" (Just 4)    (rec5 >>= childR ["050","B"] >>= toRaw)
+
+    assertEqual "C" Nothing     (rec1 >>= childR ["050","C"] >>= toRaw)
+    assertEqual "C" Nothing     (rec2 >>= childR ["050","C"] >>= toRaw)
+    assertEqual "C" Nothing     (rec3 >>= childR ["050","C"] >>= toRaw)
+    assertEqual "C" Nothing     (rec4 >>= childR ["050","C"] >>= toRaw)
+    assertEqual "C" (Just 5)    (rec5 >>= childR ["050","C"] >>= toRaw)
 

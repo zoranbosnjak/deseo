@@ -549,28 +549,40 @@ childs item
                 Just $ (dName i, Just $ Item i x):rest
         consume items b
 
-    | tip == TExtended = undefined    -- TODO
-{-
--- get childs of extended item
-childs (Item d@Desc {dTip=TExtended, dLen=Length2 n1 n2, dItems=items} b) = collect items b [] chunks where
-    chunks = [n1] ++ repeat n2
+    -- Extended
+    | tip == TExtended = do
+        let dsc = iDsc item
+            Length2 n1 n2 = dLen dsc
+            chunks = [n1] ++ repeat n2
 
-    collect items b acc chunks
-        | B.null b = acc
-        | otherwise = collect items' b2 acc' chunks'
-        where
-            (b1, b2) = (B.take (n-1) b, B.drop n b)
-            (n, chunks') = (head chunks, tail chunks)
-            (items',rv) = take b1 items []
-            acc' = acc ++ rv
-            take b items acc
-                | B.null b = (items,reverse acc)
-                | otherwise = take (B.drop size b) (tail items) (item:acc)
-                where
-                    i = head items
-                    item = Item i (B.take size b)
-                    (Just size) = sizeOf i b
--}
+            -- if no more items, there must be also end of a chunk
+            consume [] (c:_) n _
+                | (n+1) == c = Just []
+                | otherwise = Nothing
+
+            -- consume next item
+            consume items'@(i:is) chunks'@(c:cs) n b'
+
+                -- overflow
+                | (n+1) > c = Nothing
+
+                -- end of chunk
+                | (n+1) == c = do
+                    fx <- B.takeMaybe 1 b'
+                    y <- B.dropMaybe 1 b'
+                    case B.anySet fx of
+                        False -> Just [(dName x,Nothing) | x<-items']
+                        True -> consume items' cs 0 y
+
+                -- consume next item
+                | otherwise = do
+                    (x,y) <- grab i b'
+                    rest <- consume is chunks' (n + B.length x) y
+                    Just $ (dName i, Just $ Item i x):rest
+
+            consume _ _ _ _ = Nothing
+
+        consume items chunks 0 b
 
     -- Repetitive
     | tip == TRepetitive = undefined    -- TODO
@@ -633,12 +645,12 @@ unChilds dsc present = case (dTip dsc) of
 
 -- | Create compound item from profile and transform function.
 create :: Desc -> State (Maybe Item) () -> Maybe Item
-create profile transform
-    | tip==TCompound = execState transform $ emptyRecord profile
+create dsc transform
+    | tip==TCompound = execState transform $ emptyRecord dsc
     | otherwise = Nothing
     where
-        tip = dTip profile
-        emptyRecord d = Just . Item d $ B.zeros 0
+        tip = dTip dsc
+        emptyRecord d = Just $ Item d mempty
 
 -- | Alias for 'putItem'.
 --
@@ -723,21 +735,59 @@ fromNatural _ _ = Nothing
 -- | Convert from given values, convert each, then apply
 fromValues :: (a -> Desc -> Maybe Item) -> [(ItemName, a)] -> Desc -> Maybe Item
 fromValues f list parentDsc = case (dTip parentDsc) of
+
     TItem -> do
-        let names1 = map dName items
-            names2 = map fst list
-            values = map snd list
-        guard (names1 == names2)
+        guard $ names1 == names2
         l <- sequence [f val d | (val,d) <- zip values items]
         return $ Item parentDsc (mconcat . map iBits $ l)
+
     TCompound -> do
         let transform = foldr (>>) noChange transforms
             noChange = state $ \i -> ((), i)
             transforms = [putItem name (f val) | (name,val) <- list]
         create parentDsc transform
-    _ -> Nothing -- TODO define function for other types
+
+    TExtended -> do
+        let n = length names2
+            Length2 n1 n2 = dLen parentDsc
+            chunks = [n1] ++ repeat n2
+            fx0 = B.pack [False]
+            fx1 = B.pack [True]
+
+            -- end of input
+            consume (c:_) [] acc
+                -- end of chunk, we are done
+                | (B.length acc) == (c-1) = Just $ [acc `mappend` fx0]
+                -- can not terminate in the middle of a chunk
+                | otherwise = Nothing
+
+            -- more input
+            consume c'@(c:cs) input@(b:bs) acc
+                -- overflow
+                | (B.length acc) >= c = Nothing
+                -- end of chunk
+                | (B.length acc) == (c-1) = do
+                    let chunk = acc `mappend` fx1
+                    rest <- consume cs input mempty
+                    Just $ chunk:rest
+                -- not yet at the end of chunk
+                | otherwise = consume c' bs (acc `mappend` b)
+
+            consume _ _ _ = Nothing
+
+        guard $ (length names1) >= n
+        guard $ (take n names1) == names2
+        l <- sequence [f val d | (val,d) <- zip values items] >>= return . map iBits
+        ch <- consume chunks l mempty
+        return $ Item parentDsc (mconcat ch)
+
+    _ -> Nothing
+
     where 
         items = dItems parentDsc
+        names1 = map dName items
+        names2 = map fst list
+        values = map snd list
 
 -- | Get bits.
 toBits :: Item -> Maybe B.Bits
