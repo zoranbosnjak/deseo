@@ -15,15 +15,24 @@
 -- >        s <- readFile "path/to/catXY.xml"
 -- >        let c = categoryDescription s
 --
---      * parse many XML files, keep only latest revision of each defined category,
---        force evaluation
---
+--      * parse many XML files
+--        
 -- >        import Control.Exception (evaluate)
 -- >        import Control.DeepSeq (force)
 -- >
--- >        let args = [fileName1, fileName2,...]
--- >        s <- mapM readFile args
--- >        --  uaps <- evaluate . force . map ... TODO
+-- >        -- read files, force evaluation
+-- >        let files = [fileName1, fileName2,...]
+-- >        descriptions <- forM files $ \i -> do
+-- >        xml <- readFile i
+-- >        case categoryDescription xml of
+-- >            Left e -> error $ i ++ ", " ++ e
+-- >            Right val -> return val >>= evaluate . force
+-- >
+-- >        -- get specific revision for cat 8, and latest for other categories
+-- >        uaps <- case categorySelect descriptions [(8, Edition 1 2)] of
+-- >            Left e -> error e
+-- >            Right val -> return val
+
 --
 --      * decode bits to records
 --
@@ -80,6 +89,8 @@ module Data.Asterix
 
     -- * XML parsers
     , categoryDescription
+    , categorySelectAll
+    , categorySelect
 
     -- * UAP
     , uapByName
@@ -120,8 +131,9 @@ module Data.Asterix
 
 ) where
 
+import Data.Function (on)
 import Data.Maybe (fromMaybe, isJust, catMaybes)
-import Data.List (dropWhileEnd)
+import Data.List (dropWhileEnd, nub, sortBy)
 import Data.Monoid
 import qualified Data.Map as Map
 import Data.Word
@@ -243,6 +255,28 @@ datablock cat items = DataBlock {dbCat=cat, dbData=bs} where
     c = B.fromXIntegral 8 $ toInteger cat
     ln = B.fromXIntegral 16 $ (B.length records `div` 8) + 3
     records = mconcat $ map iBits items
+
+-- | Request particular edition of a category or latest
+categorySelect :: [Category] -> [(Cat,Edition)] -> Either String [(Cat,Category)]
+categorySelect dsc requested = do
+    dsc' <- categorySelectAll dsc
+    forM dsc' $ \(cat,editions) -> do
+        case lookup cat requested of
+            Nothing -> Right $ (cat, last editions)
+            Just ed -> case lookup ed [(cEdition c, c) | c <- editions] of
+                Nothing -> Left $ "Cat " ++ (show cat) ++ ", edition " ++ (show ed) ++ " not found!"
+                Just val -> Right (cat, val)
+
+-- | Group descriptions by category and sort by edition
+categorySelectAll :: [Category] -> Either String [(Cat, [Category])]
+categorySelectAll dsc = do
+    let cats = nub . map cCat $ dsc
+    forM cats $ \cat -> do
+        let editions = sortBy (compare `on` cEdition) . filter ((==cat) . cCat) $ dsc
+            eds = map cEdition editions
+        case nub eds == eds of
+            True -> Right $ (cat, editions)
+            False -> Left $ "duplicated editions in cat: " ++ show cat
 
 -- | Read xml content.
 categoryDescription :: XmlSource s => s -> Either String Category
