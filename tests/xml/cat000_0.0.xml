@@ -12,6 +12,10 @@
             </items>
         </item>
 
+        <item name="RFS" type="Rfs">
+            <dsc>Random Field Sequencing</dsc>
+        </item>
+
     </items>
 
     <uaps>

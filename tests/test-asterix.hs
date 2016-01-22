@@ -50,6 +50,9 @@ tests = [
         ],
         testGroup "types" [
             testCase "extended" testExtended
+        ],
+        testGroup "types" [
+            testCase "extended variant" testExtendedVariant
         ]
     ]
 
@@ -397,4 +400,35 @@ testExtended = do
     assertEqual "C" Nothing     (rec3 >>= childR ["050","C"] >>= toRaw)
     assertEqual "C" Nothing     (rec4 >>= childR ["050","C"] >>= toRaw)
     assertEqual "C" (Just 5)    (rec5 >>= childR ["050","C"] >>= toRaw)
+
+testExtendedVariant :: Assertion
+testExtendedVariant = do
+    cat0 <- readFile (xmldir </> "cat000_1.2.xml") >>= return . categoryDescription
+    let profiles = Map.fromList [(cCat c, c) | c<-(rights [cat0])]
+        (Right cat0') = cat0
+        (Just cat0'') = uapByName cat0' "uap"
+        
+        rec1 = create cat0'' $ "051" <! fromValues fromRaw [("A", 1)]
+        rec2 = create cat0'' $ "051" <! fromValues fromRaw [("A", 1),("B", 2)]
+        rec3 = create cat0'' $ "051" <! fromValues fromRaw [("A", 1),("B", 2),("C",3)]
+
+        Just c2 = rec2 >>= child "051" >>= childs
+
+    assertEqual "A"     False   (isJust rec1)
+    assertEqual "AB"    True    (isJust rec2)
+    assertEqual "ABC"   True    (isJust rec3)
+
+    assertEqual "len2"  2   (length c2)
+
+    assertEqual "A" Nothing     (rec1 >>= childR ["051","A"] >>= toRaw)
+    assertEqual "A" (Just 1)    (rec2 >>= childR ["051","A"] >>= toRaw)
+    assertEqual "A" (Just 1)    (rec3 >>= childR ["051","A"] >>= toRaw)
+
+    assertEqual "B" Nothing     (rec1 >>= childR ["051","B"] >>= toRaw)
+    assertEqual "B" (Just 2)    (rec2 >>= childR ["051","B"] >>= toRaw)
+    assertEqual "B" (Just 2)    (rec3 >>= childR ["051","B"] >>= toRaw)
+
+    assertEqual "C" Nothing     (rec1 >>= childR ["051","C"] >>= toRaw)
+    assertEqual "C" Nothing     (rec2 >>= childR ["051","C"] >>= toRaw)
+    assertEqual "C" (Just 3)    (rec3 >>= childR ["051","C"] >>= toRaw)
 

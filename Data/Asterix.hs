@@ -145,10 +145,11 @@ data Tip = TItem
            | TFixed
            | TSpare
            | TExtended
+           | TExtendedVariant
            | TRepetitive
            | TExplicit
            | TCompound
-           -- TRfs
+           | TRfs
            deriving (Show, Read, Eq)
 
 -- | description + data
@@ -321,19 +322,21 @@ categoryDescription src = do
 
             -- check description, recalculate length
             f :: Desc -> Either String Desc
-            f dsc@Desc {dTip=TItem, dLen=Length0, dItems=(_:_)} = Right $ dsc {dLen=recalculateLen dsc}
+            f dsc@Desc {dTip=TItem, dLen=Length0} = Right $ dsc {dLen=recalculateLen dsc}
             f dsc@Desc {dTip=TFixed, dLen=Length1 _, dItems=[]} = Right dsc
             f dsc@Desc {dTip=TSpare, dLen=Length1 _, dItems=[]} = Right dsc
             f dsc@Desc {dTip=TExtended, dLen=Length2 _ _} = Right dsc
+            f dsc@Desc {dTip=TExtendedVariant, dLen=Length2 _ _} = Right dsc
             f dsc@Desc {dTip=TRepetitive, dLen=Length0, dItems=(_:_)} = Right $ dsc {dLen=recalculateLen dsc}
             f dsc@Desc {dTip=TExplicit, dLen=Length0, dItems=[]} = Right dsc
             f dsc@Desc {dTip=TCompound, dLen=Length0, dItems=(_:_)} = Right dsc
+            f dsc@Desc {dTip=TRfs, dLen=Length0, dItems=[]} = Right dsc
             f x = Left $ "error in description: " ++ (dName x)
 
             -- get all elements
             dsc' e = do
                 name <- case X.findAttr (nameOf "name") e of
-                    Nothing -> Left $ "name not found: " ++ (show e)
+                    Nothing -> Right ""
                     Just n -> Right n
                 tip <- return . read . ("T"++) . fromMaybe "Item" . X.findAttr (nameOf "type") $ e
                 dsc <- return $ either (\_->"") (X.strContent) (getChild e "dsc")
@@ -477,6 +480,13 @@ sizeOf Desc {dTip=TExtended, dLen=Length2 n1 n2} b = do
                 then dig (size+n2)
                 else Just size
 
+-- size of ExtendedVariant (primary + maximum one extension)
+sizeOf Desc {dTip=TExtendedVariant, dLen=Length2 n1 n2} b = do
+    size <- checkSize n1 b
+    case (B.index b (size-1)) of
+        False -> Just size
+        True -> checkSize (n1+n2) b
+
 -- size of Repetitive
 sizeOf d@Desc {dTip=TRepetitive} b = do
     s8 <- checkSize 8 b
@@ -579,6 +589,36 @@ childs item
             consume _ _ _ _ = Nothing
 
         consume items chunks 0 b
+
+    -- ExtendedVariant
+    | tip == TExtendedVariant = do
+        let dsc = iDsc item
+            Length2 n1 n2 = dLen dsc
+
+            consumePrim _ [] _ = Just []
+            consumePrim n (i:is) b'
+                | n<1 = Nothing
+                | n==1 = do
+                    fx <- B.takeMaybe 1 b'
+                    b'' <- B.dropMaybe 1 b'
+                    case B.anySet fx of
+                        False -> Just []
+                        True -> consumeSec n2 (i:is) b''
+                | otherwise = do
+                    (x,y) <- grab i b'
+                    rest <- consumePrim (n - B.length x) is y
+                    Just $ (dName i, Just $ Item i x):rest
+
+            consumeSec _ [] _ = Just []
+            consumeSec n (i:is) b'
+                | n<0 = Nothing
+                | n==0 = Just []
+                | otherwise = do
+                    (x,y) <- grab i b'
+                    rest <- consumeSec (n - B.length x) is y
+                    Just $ (dName i, Just $ Item i x):rest
+
+        consumePrim n1 items b
 
     -- Repetitive
     | tip == TRepetitive = undefined    -- TODO
@@ -775,6 +815,39 @@ fromValues f list parentDsc = case (dTip parentDsc) of
         guard $ (take n names1) == names2
         l <- sequence [f val d | (val,d) <- zip values items] >>= return . map iBits
         ch <- consume chunks l mempty
+        return $ Item parentDsc (mconcat ch)
+
+    TExtendedVariant -> do
+        let n = length names2
+            Length2 n1 n2 = dLen parentDsc
+            fx0 = B.pack [False]
+            fx1 = B.pack [True]
+
+            genPrim 1 [] = Just [fx0]
+            genPrim n' bss@(b:bs)
+                | n'<1 = Nothing
+                | n'==1 = case bss of
+                    [] -> Just [fx0]
+                    _ -> do
+                        sec <- genSec n2 bss
+                        Just $ fx1:sec
+                | otherwise = do
+                    rest <- genPrim (n' - B.length b) bs
+                    Just $ b:rest
+            genPrim _ _ = Nothing
+
+            genSec 0 [] = Just []
+            genSec n' (b:bs)
+                | n < 0 = Nothing
+                | otherwise = do
+                    rest <- genSec (n' - B.length b) bs
+                    Just $ b:rest
+            genSec _ _ = Nothing
+        
+        guard $ (length names1) >= n
+        guard $ (take n names1) == names2
+        l <- sequence [f val d | (val,d) <- zip values items] >>= return . map iBits
+        ch <- genPrim n1 l
         return $ Item parentDsc (mconcat ch)
 
     _ -> Nothing

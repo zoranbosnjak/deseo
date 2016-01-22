@@ -76,6 +76,25 @@
             </items>
         </item>
 
+        <item name="051" type="ExtendedVariant">
+            <dsc>extended variant check</dsc>
+            <len>(16,8)</len>
+            <items>
+                <item name="A" type="Fixed"><len>10</len></item>
+                <item name="B" type="Fixed"><len>5</len></item>
+                <item name="C" type="Fixed"><len>8</len></item>
+            </items>
+        </item>
+
+        <item name="060" type="Compound">
+            <dsc>some compound</dsc>
+            <items>
+                <item name="I1" type="Fixed"><len>8</len></item>
+                <item></item>
+                <item name="I3" type="Fixed"><len>8</len></item>
+            </items>
+        </item>
+
     </items>
 
     <uaps>
@@ -87,6 +106,8 @@
             <item>041</item>
             <item>042</item>
             <item>050</item>
+            <item>051</item>
+            <item>060</item>
         </uap>
     </uaps>
 </category>
