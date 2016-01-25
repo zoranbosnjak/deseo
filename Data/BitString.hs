@@ -17,7 +17,7 @@
 -- >    Bits 100.....
 -- >    >>> B.take 2 $ B.pack [True, False, False]
 -- >    Bits 10......
--- >    >>> B.fromXIntegral 16 0x0102
+-- >    >>> B.fromInteger 16 0x0102
 -- >    Bits 00000001 00000010
 -- >    >>> B.toUIntegral $ B.pack [True, False]
 -- >    2
@@ -45,7 +45,7 @@ module Data.BitString (
     , anySet, allSet
 
     -- * Convert functions
-    , fromXIntegral
+    , fromInteger
     , toSIntegral, toUIntegral
     , fromByteString
     , toByteString
@@ -53,7 +53,7 @@ module Data.BitString (
 
 import Control.Monad
 import qualified Prelude as P
-import Prelude hiding (length, any, fromIntegral, toInteger, take, drop, null, (!!))
+import Prelude hiding (length, any, fromInteger, toInteger, take, drop, null, (!!))
 import Data.Monoid
 import qualified Data.ByteString as S
 import Data.Word
@@ -127,15 +127,15 @@ null (Bits b) = P.null b
 
 -- | Return 'n' bits of all zero values.
 zeros :: Int -> Bits
-zeros n = fromXIntegral n (0::Integer)
+zeros n = fromInteger n (0::Integer)
 
 -- | Generate bitstring of given bit length and value,
 -- for example:
 --
 -- >    bits 16 0x1234
 --
-fromXIntegral :: Integral a => Int -> a -> Bits
-fromXIntegral n val = Bits . map toBool $ f n val [] where
+fromInteger :: Int -> Integer -> Bits
+fromInteger n val = Bits . map toBool $ f n val [] where
     f 0 _ acc = acc
     f n' val' acc = f (n'-1) a (b:acc) where
         (a,b) = divMod val' 2

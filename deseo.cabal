@@ -62,6 +62,7 @@ test-suite test-expression
                     test-framework,
                     test-framework-hunit,
                     test-framework-quickcheck2
+    ghc-options: -O2 -Wall
 
 test-suite test-bitstring
     type:       exitcode-stdio-1.0
@@ -76,6 +77,7 @@ test-suite test-bitstring
                     test-framework,
                     test-framework-hunit,
                     test-framework-quickcheck2
+    ghc-options: -O2 -Wall
 
 test-suite test-asterix
     type:       exitcode-stdio-1.0
@@ -92,4 +94,5 @@ test-suite test-asterix
                     test-framework,
                     test-framework-hunit,
                     test-framework-quickcheck2
+    ghc-options: -O2 -Wall
 

@@ -11,64 +11,66 @@ import System.FilePath
 
 import Test.Framework (defaultMain, testGroup)
 import Test.Framework.Providers.HUnit (testCase)
-import Test.Framework.Providers.QuickCheck2 (testProperty)
-import Test.QuickCheck
 import Test.HUnit
 
 import Data.Asterix as A
 import qualified Data.BitString as B
 
+xmldir :: FilePath
 xmldir = (</> "xml") $ dropFileName __FILE__
 
-main = defaultMain tests
+main :: IO ()
+main = defaultMain tests where
 
-tests = [
-        testGroup "read xml" [
-            testCase "good" readGood
-            , testCase "bad" readBad
-        ], 
-        testGroup "datablocks" [
-            testCase "decode" dbdecode
-            , testCase "encode" dbencode
-        ],
-        testGroup "records" [
-            testCase "decode" splitRec
-            , testCase "childs" childs'
-        ],
-        testGroup "create" [
-            testCase "create" testCreate
-            , testCase "limits" testLimits
-        ],
-        testGroup "convert" [
-            testCase "get1" testGet1
-            , testCase "get2a" testGet2a
-            , testCase "get2b" testGet2b
-            , testCase "set1" testSet1
-        ],
-        testGroup "util" [
-            testCase "sizeof" testSizeOf
-        ],
-        testGroup "types" [
-            testCase "extended" testExtended
-        ],
-        testGroup "types" [
-            testCase "extended variant" testExtendedVariant
+    tests = [
+            testGroup "read xml" [
+                testCase "good" readGood
+                , testCase "bad" readBad
+            ], 
+            testGroup "datablocks" [
+                testCase "decode" dbdecode
+                , testCase "encode" dbencode
+            ],
+            testGroup "records" [
+                testCase "decode" splitRec
+                , testCase "childs" childs'
+            ],
+            testGroup "create" [
+                testCase "create" testCreate
+                , testCase "limits" testLimits
+            ],
+            testGroup "convert" [
+                testCase "get1" testGet1
+                , testCase "get2a" testGet2a
+                , testCase "get2b" testGet2b
+                , testCase "set1" testSet1
+            ],
+            testGroup "util" [
+                testCase "sizeof" testSizeOf
+            ],
+            testGroup "types" [
+                testCase "extended" testExtended
+            ],
+            testGroup "types" [
+                testCase "extended variant" testExtendedVariant
+            ]
         ]
-    ]
 
+assertLeft :: Show a => Either t a -> IO ()
 assertLeft x = case x of
-    Left e -> return ()
+    Left _ -> return ()
     Right val -> assertFailure $ "unexpected value " ++ (show val)
 
+assertRight :: Either String t -> Assertion
 assertRight x = case x of
     Left e -> assertFailure e
     _ -> return ()
 
 readGood :: Assertion
 readGood = do
-    cat' <- readFile (xmldir </> "cat000_0.0.xml") >>= return . categoryDescription
+    cat <- readFile (xmldir </> "cat000_0.0.xml") >>= return . categoryDescription
     assertRight $ do
-        cat <- cat'
+        _cat' <- cat
 
         -- TODO: check content
 
@@ -82,8 +84,8 @@ readBad = do
 dbdecode :: Assertion
 dbdecode = do
     let x0 = B.pack []
-        x1 = B.fromXIntegral (8*11) 0x02000bf0931702b847147e
-        x2 = B.fromXIntegral (8*10) 0x01000501020200050304
+        x1 = B.fromInteger (8*11) 0x02000bf0931702b847147e
+        x2 = B.fromInteger (8*10) 0x01000501020200050304
 
     assertEqual "0 datablocks" (Just []) (toDataBlocks x0)
 
@@ -93,8 +95,8 @@ dbdecode = do
 
     assertEqual "2 datablocks"
         (Just [
-            DataBlock {dbCat=1, dbData=(B.fromXIntegral 16 0x0102)}
-            , DataBlock {dbCat=2, dbData=(B.fromXIntegral 16 0x0304)}
+            DataBlock {dbCat=1, dbData=(B.fromInteger 16 0x0102)}
+            , DataBlock {dbCat=2, dbData=(B.fromInteger 16 0x0304)}
             ])
         (toDataBlocks x2)
 
@@ -112,15 +114,15 @@ splitRec = do
                 >>= return . join
                 >>= return . map iBits
 
-        d0 = B.fromXIntegral 32 0x000003
-        d1a = B.fromXIntegral 32 0x00000400
-        d1b = B.fromXIntegral 48 0x000006800203
-        d2 = B.fromXIntegral 72 0x000009800203800405
+        d0 = B.fromInteger 32 0x000003
+        d1a = B.fromInteger 32 0x00000400
+        d1b = B.fromInteger 48 0x000006800203
+        d2 = B.fromInteger 72 0x000009800203800405
 
     assertEqual "0 rec" Nothing (parse d0)
-    assertEqual "1a rec" (Just [B.fromXIntegral 8 0]) (parse d1a)
-    assertEqual "1b rec" (Just [B.fromXIntegral 24 0x800203]) (parse d1b)
-    assertEqual "2 rec" (Just [B.fromXIntegral 24 0x800203, B.fromXIntegral 24 0x800405]) (parse d2)
+    assertEqual "1a rec" (Just [B.fromInteger 8 0]) (parse d1a)
+    assertEqual "1b rec" (Just [B.fromInteger 24 0x800203]) (parse d1b)
+    assertEqual "2 rec" (Just [B.fromInteger 24 0x800203, B.fromInteger 24 0x800405]) (parse d2)
 
 childs' :: Assertion
 childs' = do
@@ -131,15 +133,15 @@ childs' = do
                 >>= mapM (toRecords profiles)
                 >>= return . join
 
-        d = B.fromXIntegral 48 0x000006800203
+        d = B.fromInteger 48 0x000006800203
         Just rr = parse d
         r = head rr
         Just (i010:i020:_) = childs r
         Just i010' = snd i010
         Just (sac:sic:_) = childs i010'
 
-        realSac = B.fromXIntegral 8 0x02
-        realSic = B.fromXIntegral 8 0x03
+        realSac = B.fromInteger 8 0x02
+        realSic = B.fromInteger 8 0x03
 
     assertEqual "i010" ("010",True) (fst i010, isJust . snd $ i010)
     assertEqual "i020" ("020",False) (fst i020, isJust . snd $ i020)
@@ -159,28 +161,28 @@ childs' = do
 testCreate :: Assertion
 testCreate = do
     cat0 <- readFile (xmldir </> "cat000_1.2.xml") >>= return . categoryDescription
-    let profiles = Map.fromList [(cCat c, c) | c<-(rights [cat0])]
+    let _profiles = Map.fromList [(cCat c, c) | c<-(rights [cat0])]
         (Right cat0') = cat0
         (Just cat0'') = uapByName cat0' "uap"
         
         rec0 = create cat0'' $ return ()
 
         rec1a = create cat0'' $ do
-                    putItem "010" $ fromBits (B.fromXIntegral 16 0x0102)
+                    putItem "010" $ fromBits (B.fromInteger 16 0x0102)
 
         rec1b = create cat0'' $ do
-                    putItem "010" $ fromRaw 0x0102
+                    putItem "010" $ fromRawInt 0x0102
 
         rec1c = create cat0'' $ do
-                    putItem "010" $ fromValues fromRaw [("SAC", 0x01), ("SIC", 0x02)]
+                    putItem "010" $ fromValues fromRawInt [("SAC", 0x01), ("SIC", 0x02)]
 
         rec1d = create cat0'' $ do
-                    "010" <! fromRaw 0x0102
+                    "010" <! fromRawInt 0x0102
 
         rec1e = create cat0'' $ do
-                    "010" `putItem` fromRaw 0x0102
+                    "010" `putItem` fromRawInt 0x0102
 
-        rec2 = fromValues fromRaw [("010", 0x0102)] cat0''
+        rec2 = fromValues fromRawInt [("010", 0x0102)] cat0''
 
     assertEqual "created 0" True (isJust rec0)
     assertEqual "created 1a" True (isJust rec1a)
@@ -205,14 +207,14 @@ testCreate = do
 testGet1 :: Assertion
 testGet1 = do
     cat0 <- readFile (xmldir </> "cat000_1.2.xml") >>= return . categoryDescription
-    let profiles = Map.fromList [(cCat c, c) | c<-(rights [cat0])]
+    let _profiles = Map.fromList [(cCat c, c) | c<-(rights [cat0])]
         (Right cat0') = cat0
         (Just cat0'') = uapByName cat0' "uap"
         
         rec = create cat0'' $ do
-            "010" <! fromValues fromRaw [("SAC", 0x01), ("SIC", 0x02)]
-            "030" <! fromRaw 256
-            "031" <! fromValues fromRaw [("X", 0x01), ("Y", 0x02)]
+            "010" <! fromValues fromRawInt [("SAC", 0x01), ("SIC", 0x02)]
+            "030" <! fromRawInt 256
+            "031" <! fromValues fromRawInt [("X", 0x01), ("Y", 0x02)]
 
         Just i030 = rec >>= child "030" >>= toNatural
 
@@ -230,16 +232,16 @@ testGet1 = do
 testGet2a :: Assertion
 testGet2a = do
     cat0 <- readFile (xmldir </> "cat000_1.2.xml") >>= return . categoryDescription
-    let profiles = Map.fromList [(cCat c, c) | c<-(rights [cat0])]
+    let _profiles = Map.fromList [(cCat c, c) | c<-(rights [cat0])]
         (Right cat0') = cat0
         (Just cat0'') = uapByName cat0' "uap"
         ae = assertEqual
         
         rec = create cat0'' $ do
-            "030" <! fromRaw 256
-            "031" <! fromValues fromRaw [("X", 0x01), ("Y", 0x02)]
-            "041" <! fromValues fromRaw [("X", 0x01), ("Y", 0x02)]
-            "042" <! fromValues fromRaw [("X", 0x01), ("Y", 0x02)]
+            "030" <! fromRawInt 256
+            "031" <! fromValues fromRawInt [("X", 0x01), ("Y", 0x02)]
+            "041" <! fromValues fromRawInt [("X", 0x01), ("Y", 0x02)]
+            "042" <! fromValues fromRawInt [("X", 0x01), ("Y", 0x02)]
 
         Just i030 = rec >>= child "030" >>= toNatural
         Just i031x = rec >>= childR ["031","X"] >>= toNatural
@@ -256,16 +258,16 @@ testGet2a = do
 testGet2b :: Assertion
 testGet2b = do
     cat0 <- readFile (xmldir </> "cat000_1.2.xml") >>= return . categoryDescription
-    let profiles = Map.fromList [(cCat c, c) | c<-(rights [cat0])]
+    let _profiles = Map.fromList [(cCat c, c) | c<-(rights [cat0])]
         (Right cat0') = cat0
         (Just cat0'') = uapByName cat0' "uap"
         ae = assertEqual
         
         rec = create cat0'' $ do
-            "030" <! fromRaw 0xFFFFFF
-            "031" <! fromValues fromRaw [("X", 0xFFFFFF), ("Y", 0xFFFFFF)]
-            "041" <! fromValues fromRaw [("X", 0xFF), ("Y", 0xFF)]
-            "042" <! fromValues fromRaw [("X", 0xFF), ("Y", 0xFF)]
+            "030" <! fromRawInt 0xFFFFFF
+            "031" <! fromValues fromRawInt [("X", 0xFFFFFF), ("Y", 0xFFFFFF)]
+            "041" <! fromValues fromRawInt [("X", 0xFF), ("Y", 0xFF)]
+            "042" <! fromValues fromRawInt [("X", 0xFF), ("Y", 0xFF)]
 
         Just i030 = rec >>= child "030" >>= toNatural
         Just i031x = rec >>= childR ["031","X"] >>= toNatural
@@ -282,13 +284,13 @@ testGet2b = do
 testSet1 :: Assertion
 testSet1 = do
     cat0 <- readFile (xmldir </> "cat000_1.2.xml") >>= return . categoryDescription
-    let profiles = Map.fromList [(cCat c, c) | c<-(rights [cat0])]
+    let _profiles = Map.fromList [(cCat c, c) | c<-(rights [cat0])]
         (Right cat0') = cat0
         (Just cat0'') = uapByName cat0' "uap"
         ae = assertEqual
         
         rec = create cat0'' $ do
-            "030" <! fromRaw (-1)
+            "030" <! fromRawInt (-1)
             "031" <! fromValues fromNatural [("X", 2), ("Y", (-2))]
             "041" <! fromValues fromNatural [("X", (-3)), ("Y", 4)]
             "042" <! fromValues fromNatural [("X", 255), ("Y", 6)]
@@ -309,7 +311,7 @@ testSizeOf :: Assertion
 testSizeOf = do
     
     cat0 <- readFile (xmldir </> "cat000_1.2.xml") >>= return . categoryDescription
-    let profiles = Map.fromList [(cCat c, c) | c<-(rights [cat0])]
+    let _profiles = Map.fromList [(cCat c, c) | c<-(rights [cat0])]
         (Right cat0') = cat0
         (Just cat0'') = uapByName cat0' "uap"
 
@@ -318,7 +320,7 @@ testSizeOf = do
 testLimits :: Assertion
 testLimits = do
     cat0 <- readFile (xmldir </> "cat000_1.2.xml") >>= return . categoryDescription
-    let profiles = Map.fromList [(cCat c, c) | c<-(rights [cat0])]
+    let _profiles = Map.fromList [(cCat c, c) | c<-(rights [cat0])]
         (Right cat0') = cat0
         (Just cat0'') = uapByName cat0' "uap"
         
@@ -332,10 +334,10 @@ testLimits = do
             "031" <! fromValues fromNatural [("X", 100), ("Y", (-100.1))]
 
         rec3a = create cat0'' $ do
-            "031" <! fromValues fromRaw [("X", 200), ("Y", (-500))]
+            "031" <! fromValues fromRawInt [("X", 200), ("Y", (-500))]
 
         rec3b = create cat0'' $ do
-            "031" <! fromValues fromRaw [("X", 500), ("Y", (-200))]
+            "031" <! fromValues fromRawInt [("X", 500), ("Y", (-200))]
 
     assertEqual "valid" True (isJust $ rec1 >>= childR ["031","X"] >>= toNatural)
     assertEqual "invalidx" True (isNothing $ rec2a >>= childR ["031","X"] >>= toNatural)
@@ -349,15 +351,15 @@ testLimits = do
 testExtended :: Assertion
 testExtended = do
     cat0 <- readFile (xmldir </> "cat000_1.2.xml") >>= return . categoryDescription
-    let profiles = Map.fromList [(cCat c, c) | c<-(rights [cat0])]
+    let _profiles = Map.fromList [(cCat c, c) | c<-(rights [cat0])]
         (Right cat0') = cat0
         (Just cat0'') = uapByName cat0' "uap"
         
-        rec1 = create cat0'' $ "050" <! fromValues fromRaw [("X", 1)]
-        rec2 = create cat0'' $ "050" <! fromValues fromRaw [("X", 1),("Y", 2)]
-        rec3 = create cat0'' $ "050" <! fromValues fromRaw [("X", 1),("Y", 2),("A",3)]
-        rec4 = create cat0'' $ "050" <! fromValues fromRaw [("X", 1),("Y", 2),("A",3),("B",4)]
-        rec5 = create cat0'' $ "050" <! fromValues fromRaw [("X", 1),("Y", 2),("A",3),("B",4),("C",5)]
+        rec1 = create cat0'' $ "050" <! fromValues fromRawInt [("X", 1)]
+        rec2 = create cat0'' $ "050" <! fromValues fromRawInt [("X", 1),("Y", 2)]
+        rec3 = create cat0'' $ "050" <! fromValues fromRawInt [("X", 1),("Y", 2),("A",3)]
+        rec4 = create cat0'' $ "050" <! fromValues fromRawInt [("X", 1),("Y", 2),("A",3),("B",4)]
+        rec5 = create cat0'' $ "050" <! fromValues fromRawInt [("X", 1),("Y", 2),("A",3),("B",4),("C",5)]
 
         Just c2 = rec2 >>= child "050" >>= childs
         Just c5 = rec5 >>= child "050" >>= childs
@@ -371,48 +373,54 @@ testExtended = do
     assertEqual "len2"  5   (length c2)
     assertEqual "len5"  5   (length c5)
 
-    assertEqual "X" Nothing     (rec1 >>= childR ["050","X"] >>= toRaw)
-    assertEqual "X" (Just 1)    (rec2 >>= childR ["050","X"] >>= toRaw)
-    assertEqual "X" (Just 1)    (rec3 >>= childR ["050","X"] >>= toRaw)
-    assertEqual "X" Nothing     (rec4 >>= childR ["050","X"] >>= toRaw)
-    assertEqual "X" (Just 1)    (rec5 >>= childR ["050","X"] >>= toRaw)
+    let aeq :: String -> Maybe Integer -> Maybe Integer -> IO ()
+        aeq = assertEqual
 
-    assertEqual "Y" Nothing     (rec1 >>= childR ["050","Y"] >>= toRaw)
-    assertEqual "Y" (Just 2)    (rec2 >>= childR ["050","Y"] >>= toRaw)
-    assertEqual "Y" (Just 2)    (rec3 >>= childR ["050","Y"] >>= toRaw)
-    assertEqual "Y" Nothing     (rec4 >>= childR ["050","Y"] >>= toRaw)
-    assertEqual "Y" (Just 2)    (rec5 >>= childR ["050","Y"] >>= toRaw)
+    aeq "X" Nothing     (rec1 >>= childR ["050","X"] >>= toRaw)
+    aeq "X" (Just 1)    (rec2 >>= childR ["050","X"] >>= toRaw)
+    aeq "X" (Just 1)    (rec3 >>= childR ["050","X"] >>= toRaw)
+    aeq "X" Nothing     (rec4 >>= childR ["050","X"] >>= toRaw)
+    aeq "X" (Just 1)    (rec5 >>= childR ["050","X"] >>= toRaw)
 
-    assertEqual "A" Nothing     (rec1 >>= childR ["050","A"] >>= toRaw)
-    assertEqual "A" Nothing     (rec2 >>= childR ["050","A"] >>= toRaw)
-    assertEqual "A" (Just 3)    (rec3 >>= childR ["050","A"] >>= toRaw)
-    assertEqual "A" Nothing     (rec4 >>= childR ["050","A"] >>= toRaw)
-    assertEqual "A" (Just 3)    (rec5 >>= childR ["050","A"] >>= toRaw)
+    aeq "Y" Nothing     (rec1 >>= childR ["050","Y"] >>= toRaw)
+    aeq "Y" (Just 2)    (rec2 >>= childR ["050","Y"] >>= toRaw)
+    aeq "Y" (Just 2)    (rec3 >>= childR ["050","Y"] >>= toRaw)
+    aeq "Y" Nothing     (rec4 >>= childR ["050","Y"] >>= toRaw)
+    aeq "Y" (Just 2)    (rec5 >>= childR ["050","Y"] >>= toRaw)
 
-    assertEqual "B" Nothing     (rec1 >>= childR ["050","B"] >>= toRaw)
-    assertEqual "B" Nothing     (rec2 >>= childR ["050","B"] >>= toRaw)
-    assertEqual "B" Nothing     (rec3 >>= childR ["050","B"] >>= toRaw)
-    assertEqual "B" Nothing     (rec4 >>= childR ["050","B"] >>= toRaw)
-    assertEqual "B" (Just 4)    (rec5 >>= childR ["050","B"] >>= toRaw)
+    aeq "A" Nothing     (rec1 >>= childR ["050","A"] >>= toRaw)
+    aeq "A" Nothing     (rec2 >>= childR ["050","A"] >>= toRaw)
+    aeq "A" (Just 3)    (rec3 >>= childR ["050","A"] >>= toRaw)
+    aeq "A" Nothing     (rec4 >>= childR ["050","A"] >>= toRaw)
+    aeq "A" (Just 3)    (rec5 >>= childR ["050","A"] >>= toRaw)
 
-    assertEqual "C" Nothing     (rec1 >>= childR ["050","C"] >>= toRaw)
-    assertEqual "C" Nothing     (rec2 >>= childR ["050","C"] >>= toRaw)
-    assertEqual "C" Nothing     (rec3 >>= childR ["050","C"] >>= toRaw)
-    assertEqual "C" Nothing     (rec4 >>= childR ["050","C"] >>= toRaw)
-    assertEqual "C" (Just 5)    (rec5 >>= childR ["050","C"] >>= toRaw)
+    aeq "B" Nothing     (rec1 >>= childR ["050","B"] >>= toRaw)
+    aeq "B" Nothing     (rec2 >>= childR ["050","B"] >>= toRaw)
+    aeq "B" Nothing     (rec3 >>= childR ["050","B"] >>= toRaw)
+    aeq "B" Nothing     (rec4 >>= childR ["050","B"] >>= toRaw)
+    aeq "B" (Just 4)    (rec5 >>= childR ["050","B"] >>= toRaw)
+
+    aeq "C" Nothing     (rec1 >>= childR ["050","C"] >>= toRaw)
+    aeq "C" Nothing     (rec2 >>= childR ["050","C"] >>= toRaw)
+    aeq "C" Nothing     (rec3 >>= childR ["050","C"] >>= toRaw)
+    aeq "C" Nothing     (rec4 >>= childR ["050","C"] >>= toRaw)
+    aeq "C" (Just 5)    (rec5 >>= childR ["050","C"] >>= toRaw)
 
 testExtendedVariant :: Assertion
 testExtendedVariant = do
     cat0 <- readFile (xmldir </> "cat000_1.2.xml") >>= return . categoryDescription
-    let profiles = Map.fromList [(cCat c, c) | c<-(rights [cat0])]
+    let _profiles = Map.fromList [(cCat c, c) | c<-(rights [cat0])]
         (Right cat0') = cat0
         (Just cat0'') = uapByName cat0' "uap"
         
-        rec1 = create cat0'' $ "051" <! fromValues fromRaw [("A", 1)]
-        rec2 = create cat0'' $ "051" <! fromValues fromRaw [("A", 1),("B", 2)]
-        rec3 = create cat0'' $ "051" <! fromValues fromRaw [("A", 1),("B", 2),("C",3)]
+        rec1 = create cat0'' $ "051" <! fromValues fromRawInt [("A", 1)]
+        rec2 = create cat0'' $ "051" <! fromValues fromRawInt [("A", 1),("B", 2)]
+        rec3 = create cat0'' $ "051" <! fromValues fromRawInt [("A", 1),("B", 2),("C",3)]
 
         Just c2 = rec2 >>= child "051" >>= childs
+
+        aeq :: String -> Maybe Integer -> Maybe Integer -> IO ()
+        aeq s a b = assertEqual s a b
 
     assertEqual "A"     False   (isJust rec1)
     assertEqual "AB"    True    (isJust rec2)
@@ -420,15 +428,15 @@ testExtendedVariant = do
 
     assertEqual "len2"  2   (length c2)
 
-    assertEqual "A" Nothing     (rec1 >>= childR ["051","A"] >>= toRaw)
-    assertEqual "A" (Just 1)    (rec2 >>= childR ["051","A"] >>= toRaw)
-    assertEqual "A" (Just 1)    (rec3 >>= childR ["051","A"] >>= toRaw)
+    aeq "A" Nothing     (rec1 >>= childR ["051","A"] >>= toRaw)
+    aeq "A" (Just 1)    (rec2 >>= childR ["051","A"] >>= toRaw)
+    aeq "A" (Just 1)    (rec3 >>= childR ["051","A"] >>= toRaw)
 
-    assertEqual "B" Nothing     (rec1 >>= childR ["051","B"] >>= toRaw)
-    assertEqual "B" (Just 2)    (rec2 >>= childR ["051","B"] >>= toRaw)
-    assertEqual "B" (Just 2)    (rec3 >>= childR ["051","B"] >>= toRaw)
+    aeq "B" Nothing     (rec1 >>= childR ["051","B"] >>= toRaw)
+    aeq "B" (Just 2)    (rec2 >>= childR ["051","B"] >>= toRaw)
+    aeq "B" (Just 2)    (rec3 >>= childR ["051","B"] >>= toRaw)
 
-    assertEqual "C" Nothing     (rec1 >>= childR ["051","C"] >>= toRaw)
-    assertEqual "C" Nothing     (rec2 >>= childR ["051","C"] >>= toRaw)
-    assertEqual "C" (Just 3)    (rec3 >>= childR ["051","C"] >>= toRaw)
+    aeq "C" Nothing     (rec1 >>= childR ["051","C"] >>= toRaw)
+    aeq "C" Nothing     (rec2 >>= childR ["051","C"] >>= toRaw)
+    aeq "C" (Just 3)    (rec3 >>= childR ["051","C"] >>= toRaw)
 

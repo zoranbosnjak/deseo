@@ -38,7 +38,7 @@
 --
 -- >        import qualified Data.BitString as B
 -- >
--- >        let datablock = B.fromXIntegral 48 0x000006800203
+-- >        let datablock = B.fromInteger 48 0x000006800203
 -- >
 -- >        profiles <- ...
 -- >        let parse db = return db
@@ -56,11 +56,11 @@
 --
 -- >        catXY <- ...
 -- >        rec <- create catXY $ do
--- >            "010" <! fromBits (B.fromXIntegral 16 0x0102)
--- >            "020" <! fromRaw 0x0203
--- >            "030" <! fromValues fromRaw [("SAC", 0x01), ("SIC", 0x02)]
+-- >            "010" <! fromBits (B.fromInteger 16 0x0102)
+-- >            "020" <! fromRawInt 0x0203
+-- >            "030" <! fromValues fromRawInt [("SAC", 0x01), ("SIC", 0x02)]
 -- >           
--- >        rec <- fromValues fromRaw [("010", 0x0102)] catXY
+-- >        rec <- fromValues fromRawInt [("010", 0x0102)] catXY
 --
 --
 --      * encode
@@ -106,11 +106,13 @@ module Data.Asterix
     , unChilds
 
     -- * Building items
-    , create, (<!), putItem, delItem
+    , create, (<!), putItem, delItem, failItem
 
     -- * Converters: value -> Maybe Item
     , fromBits
     , fromRaw
+    , fromRawInt
+    , fromRawInteger
     , fromNatural
     --, fromString
     , fromValues
@@ -252,31 +254,33 @@ data DataBlock = DataBlock {
 datablock :: Cat -> [Item] -> DataBlock
 datablock cat items = DataBlock {dbCat=cat, dbData=bs} where
     bs = c `mappend` ln `mappend` records
-    c = B.fromXIntegral 8 $ toInteger cat
-    ln = B.fromXIntegral 16 $ (B.length records `div` 8) + 3
+    c = B.fromInteger 8 $ toInteger cat
+    ln = B.fromInteger 16 $ fromIntegral $ (B.length records `div` 8) + 3
     records = mconcat $ map iBits items
 
 -- | Request particular edition of a category or latest
-categorySelect :: [Category] -> [(Cat,Edition)] -> Either String [(Cat,Category)]
+categorySelect :: [Category] -> [(Cat,Edition)] -> Either String Profiles
 categorySelect dsc requested = do
     dsc' <- categorySelectAll dsc
-    forM dsc' $ \(cat,editions) -> do
+    p <- forM (Map.toList dsc') $ \(cat,editions) -> do
         case lookup cat requested of
             Nothing -> Right $ (cat, last editions)
             Just ed -> case lookup ed [(cEdition c, c) | c <- editions] of
                 Nothing -> Left $ "Cat " ++ (show cat) ++ ", edition " ++ (show ed) ++ " not found!"
                 Just val -> Right (cat, val)
+    Right $ Map.fromList p
 
 -- | Group descriptions by category and sort by edition
-categorySelectAll :: [Category] -> Either String [(Cat, [Category])]
+categorySelectAll :: [Category] -> Either String (Map.Map Cat [Category])
 categorySelectAll dsc = do
     let cats = nub . map cCat $ dsc
-    forM cats $ \cat -> do
+    p <- forM cats $ \cat -> do
         let editions = sortBy (compare `on` cEdition) . filter ((==cat) . cCat) $ dsc
             eds = map cEdition editions
         case nub eds == eds of
             True -> Right $ (cat, editions)
             False -> Left $ "duplicated editions in cat: " ++ show cat
+    Right $ Map.fromList p
 
 -- | Read xml content.
 categoryDescription :: XmlSource s => s -> Either String Category
@@ -750,9 +754,19 @@ putItem name toItem = state $ \i -> ((),newItem i) where
                 >>= unChilds (iDsc parent)
         _ -> Nothing
 
+-- | Force computation to fail
+--
+-- >    rec <- create cat $ do
+-- >        "020" `putItem` fromRaw 0x0102
+-- >        failItem
+-- >        "030" `putItem` fromRaw 0x0304
+--
+failItem :: State (Maybe Item) ()
+failItem = state $ \_ -> ((), Nothing)
+
 -- | Delete subitem from compound item.
 delItem :: String -> State (Maybe Item) ()
-delItem = undefined
+delItem = undefined -- TODO
 
 -- convert functions: 
 
@@ -769,8 +783,8 @@ fromBits val dsc@Desc {dLen=Length1 len} = do
 fromBits val dsc = case (dTip dsc) of
     TExplicit -> do
         let (a,b) = divMod (B.length val) 8
-            ln = a+1
-            size = B.fromXIntegral 8 ln
+            ln = fromIntegral $ a+1
+            size = B.fromInteger 8 ln
         guard (b==0)
         guard (ln<=255)
         return $ Item dsc (size `mappend` val)
@@ -778,8 +792,14 @@ fromBits val dsc = case (dTip dsc) of
 
 -- | Convert from raw value (item size must be known).
 fromRaw :: Integral a => a -> Desc -> Maybe Item
-fromRaw val dsc@Desc {dLen=Length1 len} = return $ Item dsc (B.fromXIntegral len val)
+fromRaw val dsc@Desc {dLen=Length1 len} = Just $ Item dsc $ B.fromInteger len $ fromIntegral val
 fromRaw _ _ = Nothing
+
+fromRawInt :: Int -> Desc -> Maybe Item
+fromRawInt = fromRaw 
+
+fromRawInteger :: Integer -> Desc -> Maybe Item
+fromRawInteger = fromRaw 
 
 -- | Convert from natural value.
 fromNatural :: EValue -> Desc -> Maybe Item
@@ -799,7 +819,7 @@ fromNatural val dsc@Desc {dLen=Length1 len} = do
                 else Nothing
         _ -> Nothing
     val' <- return val >>= _chkLimit mmin (<) >>= _chkLimit mmax (>) >>= return . ival . conv
-    return $ Item dsc (B.fromXIntegral len val')
+    return $ Item dsc (B.fromInteger len val')
 fromNatural _ _ = Nothing
 
 -- | Convert from given values, convert each, then apply

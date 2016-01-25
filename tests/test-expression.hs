@@ -8,24 +8,24 @@ import qualified Test.QuickCheck as QC
 
 import Data.Asterix
 
-main = defaultMain tests
+main :: IO ()
+main = defaultMain tests where
+    tests = [
+            testGroup "Simple" [
+                    testCase "basic" testBasic
+                    , testCase "good" simpleGood
+                    , testCase "bad" simpleBad
+                ]
+            , testGroup "Complex" [
+                    testCase "good" complexGood
+                    , testCase "bad" complexBad
 
-tests = [
-        testGroup "Simple" [
-                testCase "basic" testBasic
-                , testCase "good" simpleGood
-                , testCase "bad" simpleBad
             ]
-        , testGroup "Complex" [
-                testCase "good" complexGood
-                , testCase "bad" complexBad
-
+            , testGroup "Functions" [
+                    testProperty "pow1" testPow1
+                    , testProperty "pow2" testPow2
+            ]
         ]
-        , testGroup "Functions" [
-                testProperty "pow1" testPow1
-                , testProperty "pow2" testPow2
-        ]
-    ]
 
 testBasic :: Assertion
 testBasic = do
@@ -56,8 +56,14 @@ testBasic = do
 
 
 -- helper functions
+
+(===) :: String -> EValue -> Assertion
 a === b = eq a b
+
+eq :: String -> EValue -> Assertion
 eq a b = assertEqual ("expression: " ++ (show a)) (Just b) (eval a)
+
+nok :: String -> Assertion
 nok e = assertEqual "verify failure" Nothing (eval e)
 
 simpleGood :: Assertion

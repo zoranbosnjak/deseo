@@ -12,32 +12,32 @@ import Test.HUnit
 
 import qualified Data.BitString as B
 
-main = defaultMain tests
-
-tests = [
-        testGroup "create" [
-                testCase "bits" bits
+main :: IO ()
+main = defaultMain tests where
+    tests = [
+            testGroup "create" [
+                    testCase "bits" bits
+                ]
+            , testGroup "pack" [
+                    testProperty "pack1" pack1
+                    , testProperty "pack2" pack2
+                ]
+            , testGroup "util" [
+                    testProperty "length" length'
+                    , testProperty "take" take'
+                    , testProperty "drop" drop'
+                    , testProperty "zeros" zeros'
+                    , testCase "maybe" takeDropMaybe
+                    , testCase "any" testAny
             ]
-        , testGroup "pack" [
-                testProperty "pack1" pack1
-                , testProperty "pack2" pack2
+            , testGroup "convert" [
+                    testCase "integral" integral'
+                    , testProperty "bytestring" bytestring'
             ]
-        , testGroup "util" [
-                testProperty "length" length'
-                , testProperty "take" take'
-                , testProperty "drop" drop'
-                , testProperty "zeros" zeros'
-                , testCase "maybe" takeDropMaybe
-                , testCase "any" testAny
+            , testGroup "other" [
+                    testProperty "combine" combine
+            ]
         ]
-        , testGroup "convert" [
-                testCase "integral" integral'
-                , testProperty "bytestring" bytestring'
-        ]
-        , testGroup "other" [
-                testProperty "combine" combine
-        ]
-    ]
 
 bits :: Assertion
 bits = do
@@ -46,7 +46,8 @@ bits = do
     eq 2 2 [True,False]
     eq 2 3 [True,True]
     where
-        eq n a exp = assertEqual ((show n) ++ "," ++ (show a)) exp (B.unpack $ B.fromXIntegral n a)
+        eq :: Int -> Integer -> [Bool] -> Assertion
+        eq n a s = assertEqual ((show n) ++ "," ++ (show a)) s (B.unpack $ B.fromInteger n a)
 
 pack1 :: [Bool] -> Bool
 pack1 s = ((B.unpack . B.pack $ s) == s)
@@ -66,16 +67,18 @@ drop' n b = (B.drop n b) == (B.pack . drop n . B.unpack $ b)
 
 integral' :: Assertion
 integral' = do
-    assertEqual "to integral" 1 (B.toSIntegral . B.pack $ [False,True])
-    assertEqual "to uintegral" 1 (B.toUIntegral . B.pack $ [False,True])
-    assertEqual "to integral" (-2) (B.toSIntegral . B.pack $ [True,False])
-    assertEqual "to uintegral" 2 (B.toUIntegral . B.pack $ [True,False])
-    assertEqual "to integral" (-1) (B.toSIntegral . B.pack $ [True,True])
-    assertEqual "to uintegral" 3 (B.toUIntegral . B.pack $ [True,True])
-    assertEqual "to integral" 2 (B.toSIntegral . B.pack $ [False,True,False])
-    assertEqual "to uintegral" 2 (B.toUIntegral . B.pack $ [False,True,False])
-    assertEqual "to integral" 0 (B.toSIntegral . B.pack $ [False,False,False])
-    assertEqual "to uintegral" 0 (B.toUIntegral . B.pack $ [False,False,False])
+    let eqi :: String -> Integer -> Integer -> IO ()
+        eqi s a b = assertEqual s a b
+    eqi "to integral" 1 (B.toSIntegral . B.pack $ [False,True])
+    eqi "to uintegral" 1 (B.toUIntegral . B.pack $ [False,True])
+    eqi "to integral" (-2) (B.toSIntegral . B.pack $ [True,False])
+    eqi "to uintegral" 2 (B.toUIntegral . B.pack $ [True,False])
+    eqi "to integral" (-1) (B.toSIntegral . B.pack $ [True,True])
+    eqi "to uintegral" 3 (B.toUIntegral . B.pack $ [True,True])
+    eqi "to integral" 2 (B.toSIntegral . B.pack $ [False,True,False])
+    eqi "to uintegral" 2 (B.toUIntegral . B.pack $ [False,True,False])
+    eqi "to integral" 0 (B.toSIntegral . B.pack $ [False,False,False])
+    eqi "to uintegral" 0 (B.toUIntegral . B.pack $ [False,False,False])
 
 bytestring' :: [Word8] -> Bool
 bytestring' s = (fromJust . B.toByteString . B.fromByteString . S.pack $ s) == (S.pack s)
