@@ -194,6 +194,8 @@ testCreate = do
     assertEqual "equal 1e" rec1a rec1e
     assertEqual "equal 2" rec1a rec2
 
+    assertEqual "correct" (B.fromInteger 24 0x800102) (iBits $ fromJust rec1a) 
+
         {-
 
         rec2 = create cat0 $ do

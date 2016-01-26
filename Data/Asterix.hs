@@ -748,9 +748,14 @@ putItem name toItem = state $ \i -> ((),newItem i) where
         TCompound -> do
             dsc <- lookup name [(dName d, d) | d <- dItems . iDsc $ parent]
             let maybeItem = toItem dsc
+                replace l = do
+                    (a,b) <- l
+                    case (a==name) of
+                        True -> [(a,maybeItem)]
+                        False -> [(a,b)]
             guard $ isJust maybeItem
             childs parent
-                >>= return . Map.toList . Map.insert name maybeItem . Map.fromList 
+                >>= return . replace
                 >>= unChilds (iDsc parent)
         _ -> Nothing
 

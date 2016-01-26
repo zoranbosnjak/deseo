@@ -95,6 +95,10 @@
             </items>
         </item>
 
+        <item name="100" type="Fixed">
+            <len>16</len>
+        </item>
+
     </items>
 
     <uaps>
@@ -108,6 +112,8 @@
             <item>050</item>
             <item>051</item>
             <item>060</item>
+            <item></item>
+            <item>100</item>
         </uap>
     </uaps>
 </category>
