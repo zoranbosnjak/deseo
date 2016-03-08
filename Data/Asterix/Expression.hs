@@ -1,3 +1,5 @@
+{-# LANGUAGE DeriveGeneric #-}
+
 ----------------
 -- |
 -- Module       :  Data.Asterix.Expression
@@ -13,13 +15,16 @@ module Data.Asterix.Expression
     , eval
 ) where
 
+import Control.DeepSeq.Generics
+import GHC.Generics
 import Language.Python.Version3 as P
 import Language.Python.Common.AST as A
 
 data EValue =
     EInteger Integer
     | EDouble Double
-    deriving (Show)
+    deriving (Show, Generic)
+instance NFData EValue
 
 -- | Convert to Double
 _toDouble :: EValue -> Double

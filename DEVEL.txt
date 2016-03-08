@@ -1,0 +1,19 @@
+build:
+    cabal2nix --shell . > shell.nix
+    nix-shell --command 'cabal configure && cabal build -j'
+
+inside nix-shell:
+
+    cabal2nix --shell . > shell.nix
+    nix-shell
+
+    devel:
+        cabal configure
+        cabal build -j
+
+    run tests:
+        cabal test [--test-option=--color] [--show-details=always] [testName]
+
+    generate docs:
+        cabal haddock 
+

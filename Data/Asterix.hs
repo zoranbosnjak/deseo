@@ -1,3 +1,5 @@
+{-# LANGUAGE DeriveGeneric #-}
+
 ----------------
 -- |
 -- Module       :  Data.Asterix
@@ -136,13 +138,13 @@ module Data.Asterix
 import Data.Function (on)
 import Data.Maybe (fromMaybe, isJust, catMaybes)
 import Data.List (dropWhileEnd, nub, sortBy)
-import Data.Monoid
 import qualified Data.Map as Map
 import Data.Word
 
-import Control.DeepSeq
+import Control.DeepSeq.Generics
 import Control.Monad
 import Control.Monad.State
+import GHC.Generics
 
 import qualified Text.XML.Light as X
 import Text.XML.Light.Lexer (XmlSource)
@@ -164,13 +166,14 @@ data Tip = TItem
            | TExplicit
            | TCompound
            | TRfs
-           deriving (Show, Read, Eq)
+           deriving (Show, Read, Eq, Generic)
+instance NFData Tip
 
 -- | description + data
 data Item = Item {
         iDsc :: Desc 
         , iBits :: B.Bits 
-        } deriving (Show,Eq)
+        } deriving (Show, Eq)
 
 -- | Asterix item description
 data Desc = Desc {  dName       :: ItemName
@@ -179,7 +182,7 @@ data Desc = Desc {  dName       :: ItemName
                     , dLen      :: Length
                     , dItems    :: [Desc]
                     , dValue    :: Value
-                 } deriving (Eq)
+                 } deriving (Eq, Generic)
 instance NFData Desc
 instance Show Desc where
     show d = (show . dTip $ d) ++ " (" ++ (dName d) ++ "), " ++ (show . dLen $ d) ++ ", " ++ (show $ dValue d)
@@ -209,7 +212,7 @@ data Category = Category {
         cCat :: Cat 
         ,cEdition :: Edition 
         ,cUaps :: [Uap]
-    }
+    } deriving (Generic)
 instance NFData Category
 instance Show Category where
     show c = "(category " ++ (show $ cCat c) ++ ", edition " ++ (show $ cEdition c) ++ ")"
@@ -217,7 +220,7 @@ instance Show Category where
 type Profiles = Map.Map Cat Category
 
 -- | Asterix edition
-data Edition = Edition Major Minor deriving (Eq)
+data Edition = Edition Major Minor deriving (Eq, Generic)
 instance NFData Edition
 instance Ord Edition where
     compare (Edition a1 b1) (Edition a2 b2) = (compare a1 a2) `mappend` (compare b1 b2)
@@ -229,7 +232,8 @@ instance Read Edition where
         b = tail . dropWhile (/='.') $ value
 
 -- | Length of asterix item
-data Length = Length0 | Length1 Int | Length2 Int Int deriving (Show, Read, Eq)
+data Length = Length0 | Length1 Int | Length2 Int Int deriving (Show, Read, Eq, Generic)
+instance NFData Length
 
 type Lsb = EValue
 type Unit = String
@@ -243,7 +247,8 @@ data Value =
     | VUnsignedDecimal Lsb (Maybe Unit) (Maybe Min) (Maybe Max)
     | VInteger (Maybe Unit) (Maybe Min) (Maybe Max)
     | VUnsignedInteger (Maybe Unit) (Maybe Min) (Maybe Max)
-    deriving (Eq, Show)
+    deriving (Eq, Show, Generic)
+instance NFData Value
 
 data DataBlock = DataBlock {
     dbCat :: Cat

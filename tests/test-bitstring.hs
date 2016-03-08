@@ -1,7 +1,6 @@
 module Main where
 
 import Data.Maybe
-import Data.Monoid
 import Data.Word
 import qualified Data.ByteString as S
 import Test.Framework (defaultMain, testGroup)

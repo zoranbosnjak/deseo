@@ -54,7 +54,6 @@ module Data.BitString (
 import Control.Monad
 import qualified Prelude as P
 import Prelude hiding (length, any, fromInteger, toInteger, take, drop, null, (!!))
-import Data.Monoid
 import qualified Data.ByteString as S
 import Data.Word
 import qualified Data.Bits as B
