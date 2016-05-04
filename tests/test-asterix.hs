@@ -50,9 +50,8 @@ main = defaultMain tests where
             ],
             testGroup "types" [
                 testCase "extended" testExtended
-            ],
-            testGroup "types" [
-                testCase "extended variant" testExtendedVariant
+                , testCase "extended variant" testExtendedVariant
+                , testCase "repetitive" testRepetitive
             ]
         ]
 
@@ -441,4 +440,26 @@ testExtendedVariant = do
     aeq "C" Nothing     (rec1 >>= childR ["051","C"] >>= toRaw)
     aeq "C" Nothing     (rec2 >>= childR ["051","C"] >>= toRaw)
     aeq "C" (Just 3)    (rec3 >>= childR ["051","C"] >>= toRaw)
+
+testRepetitive :: Assertion
+testRepetitive = do
+    cat0 <- readFile (xmldir </> "cat000_1.2.xml") >>= return . categoryDescription
+    let _profiles = Map.fromList [(cCat c, c) | c<-(rights [cat0])]
+        (Right cat0') = cat0
+        (Just cat0'') = uapByName cat0' "uap"
+        
+        rec1 = create cat0'' $ "070" <! fromRepetitiveValues (fromValues fromRawInt)
+            [ [("A", 1), ("B", 2)]
+            , [("A", 3), ("B", 4)]
+            ]
+
+        Just c1 = rec1 >>= child "070" >>= childs
+
+    assertEqual "070"   True   (isJust rec1)
+    assertEqual "070 childs length"   2 (length c1)
+
+    let result = [(a,decode b) | (a,b) <- c1]
+        decode = map decItem . fromJust . childs . fromJust
+        decItem (name, i) = (name, B.toUIntegral . iBits $ fromJust i :: Int)
+    assertEqual "070 childs" [("0", [("A", 1), ("B", 2)]), ("1", [("A", 3), ("B", 4)])] result
 

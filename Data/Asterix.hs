@@ -64,10 +64,8 @@
 -- >           
 -- >        rec <- fromValues fromRawInt [("010", 0x0102)] catXY
 --
+-- >        rec <- fromRepetitiveValues (fromValues fromRawInt) [ [("A", 1), ("B", 2)], [("A", 3), ("B", 4)] ]
 --
---      * encode
---
---          TODO
 --
 
 module Data.Asterix
@@ -118,6 +116,7 @@ module Data.Asterix
     , fromNatural
     --, fromString
     , fromValues
+    , fromRepetitiveValues
 
     -- * Converters: Item -> Maybe value
     , toBits
@@ -153,8 +152,9 @@ import qualified Data.BitString as B
 import Data.Asterix.Expression
 
 -- for debug purposes
---import Debug.Trace
---dump = flip trace
+import Debug.Trace
+_dump :: c -> String -> c
+_dump = flip trace
 
 -- | Asterix item types
 data Tip = TItem
@@ -664,7 +664,21 @@ childs item
         consumePrim n1 items b
 
     -- Repetitive
-    | tip == TRepetitive = undefined    -- TODO
+    | tip == TRepetitive = do
+        n <- checkSize 8 b
+        let dsc = iDsc item
+            subDsc = dsc {dTip = TItem}
+            rep = B.toUIntegral . B.take n $ b
+            dataBits = B.drop n b
+
+            consume _ 0 _ = Just []
+            consume ix remainingN remainingBits = do
+                (x,y) <- grab subDsc remainingBits
+                let subitem = Item {iDsc=subDsc, iBits=x}
+                rest <- consume (ix+1) (remainingN-1) y
+                Just $ (show ix, Just subitem):rest
+
+        consume (0::Int) (rep::Int) dataBits
 
     -- Compound
     | tip == TCompound = do
@@ -921,6 +935,20 @@ fromValues f list parentDsc = case (dTip parentDsc) of
         names1 = map dName items
         names2 = map fst list
         values = map snd list
+
+-- | Convert repetitive values
+fromRepetitiveValues :: (t -> Desc -> Maybe Item) -> [t] -> Desc -> Maybe Item
+fromRepetitiveValues f list parentDsc = case (dTip parentDsc) of
+
+    TRepetitive -> do
+        guard $ (length list) <= 255
+        let n = B.fromInteger 8 $ fromIntegral $ length list
+            -- tip is TRepetitive, but individual items are TItem
+            dsc = parentDsc {dTip=TItem} 
+        items <- sequence [f val dsc | val <- list] >>= return . map iBits
+        return $ Item parentDsc $ mconcat (n:items)
+
+    _ -> Nothing
 
 -- | Get bits.
 toBits :: Item -> Maybe B.Bits
