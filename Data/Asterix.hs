@@ -2,9 +2,11 @@
 
 ----------------
 -- |
--- Module       :  Data.Asterix
---
--- Maintainer   : Zoran Bošnjak <zoran.bosnjak@sloveniacontrol.si>
+-- Module:      Data.Asterix
+-- Copyright:   (c) 2015-2016 Zoran Bošnjak
+--              (c) 2015-2016 Sloveniacontrol Ltd. (www.sloveniacontrol.si)
+-- License:     GPL-3
+-- Maintainer:  Zoran Bošnjak <zoran.bosnjak@sloveniacontrol.si>
 --
 -- This module provides encoder/decoder for Asterix data.
 --

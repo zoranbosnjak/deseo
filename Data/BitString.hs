@@ -1,8 +1,10 @@
 ----------------
 -- |
 -- Module       :  Data.BitString
---
--- Maintainer   : Zoran Bošnjak <zoran.bosnjak@sloveniacontrol.si>
+-- Copyright:   (c) 2015-2016 Zoran Bošnjak
+--              (c) 2015-2016 Sloveniacontrol Ltd. (www.sloveniacontrol.si)
+-- License:     GPL-3
+-- Maintainer:  Zoran Bošnjak <zoran.bosnjak@sloveniacontrol.si>
 --
 -- This module provides simple bitstring manipulation library.
 -- The implementation is based on lists - [Bool].
