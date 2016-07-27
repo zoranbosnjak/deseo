@@ -142,7 +142,7 @@ import Data.List (dropWhileEnd, nub, sortBy)
 import qualified Data.Map as Map
 import Data.Word
 
-import Control.DeepSeq.Generics
+import Control.DeepSeq
 import Control.Monad
 import Control.Monad.State
 import GHC.Generics

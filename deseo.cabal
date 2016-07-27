@@ -1,5 +1,5 @@
 name:                deseo
-version:             1.0.0.0
+version:             1.1.0.0
 synopsis:            Asterix decoder/encoder
 license:             GPL-3
 license-file:        LICENSE
@@ -30,11 +30,12 @@ library
         Data.Asterix.Expression
 
     build-depends:
-        base == 4.8.*,
+        QuickCheck,
+        base == 4.9.*,
         language-python == 0.5.*,
-        QuickCheck == 2.8.*,
         bytestring == 0.10.*,
-        deepseq-generics == 0.1.*,
+        deepseq == 1.4.*,
+        deepseq-generics == 0.2.*,
         mtl == 2.2.*,
         containers == 0.5.*,
         xml == 1.3.*
