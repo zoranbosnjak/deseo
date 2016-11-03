@@ -175,7 +175,8 @@ instance NFData Tip
 data Item = Item {
         iDsc :: Desc 
         , iBits :: B.Bits 
-        } deriving (Show, Eq)
+        } deriving (Generic, Show, Eq)
+instance NFData Item
 
 -- | Asterix item description
 data Desc = Desc {  dName       :: ItemName
@@ -255,7 +256,8 @@ instance NFData Value
 data DataBlock = DataBlock {
     dbCat :: Cat
     , dbData :: B.Bits
-} deriving (Eq, Show)
+} deriving (Generic, Eq, Show)
+instance NFData DataBlock
 
 --  | Create datablock
 datablock :: Cat -> [Item] -> DataBlock

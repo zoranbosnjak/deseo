@@ -6,3 +6,7 @@
 
 * Minor modifications for ghc801
 
+# 1.2
+
+* NFData instances fix
+

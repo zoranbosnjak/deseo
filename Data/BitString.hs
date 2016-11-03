@@ -25,6 +25,8 @@
 -- >    2
 --
 
+{-# LANGUAGE DeriveGeneric #-}
+
 module Data.BitString (
 
     Bits
@@ -53,6 +55,7 @@ module Data.BitString (
     , toByteString
 ) where
 
+import Control.DeepSeq
 import Control.Monad
 import qualified Prelude as P
 import Prelude hiding (length, any, fromInteger, toInteger, take, drop, null, (!!))
@@ -60,12 +63,14 @@ import qualified Data.ByteString as S
 import Data.Word
 import qualified Data.Bits as B
 import Data.List (foldl1')
+import GHC.Generics
 
 import Test.QuickCheck
 
 -- | Bits data type.
-data Bits = Bits [Bool] 
-                deriving (Eq)
+data Bits = Bits [Bool] deriving (Generic, Eq)
+
+instance NFData Bits
 
 instance Show Bits where
     show (Bits bb) = "Bits " ++ disp bb where
