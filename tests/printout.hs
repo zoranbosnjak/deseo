@@ -21,7 +21,8 @@ main = do
 
     -- read all files, force evaluation
     s <- sequence $ map readFile args
-    uaps <- evaluate . force . map (\(cat, (ed, dsc)) -> (cat, dsc)) . A.getCategoryDescriptions [] $ s
+    uaps <- evaluate . force . map (\(cat, (ed, dsc)) -> (cat, dsc)) 
+        . A.getCategoryDescriptions [] $ s
 
     let p018 :: A.Desc
         p018 = fromJust $ A.getUapByName 18 uaps "uap"
@@ -40,30 +41,30 @@ main = do
         record1b = A.Item p048 $ B.bits 32 0x40010203
 
         record2 = A.create p048 $ do
-                    A.setItem "010" $ A.fromValue 0x0102
+            A.setItem "010" $ A.fromValue 0x0102
 
         record3a = A.create p018 $ do
-                    A.setItem "036" $ A.fromValue 0x0102
+            A.setItem "036" $ A.fromValue 0x0102
 
         record3b = A.create p018 $ do
-                    A.setItem "037" $ A.fromValue 0x0102
+            A.setItem "037" $ A.fromValue 0x0102
 
         record3c = A.create p018 $ do
-                    A.setItem "036" $ A.fromValue 0x0102
-                    A.setItem "037" $ A.fromValue 0x0304
+            A.setItem "036" $ A.fromValue 0x0102
+            A.setItem "037" $ A.fromValue 0x0304
 
         record3d = A.create p018 $ do
-                    A.setItem "036" $ A.fromValue 0x0102
-                    A.setItem "037" $ A.fromValues [("SAC", 0x03), ("SIC", 0x04)]
+            A.setItem "036" $ A.fromValue 0x0102
+            A.setItem "037" $ A.fromValues [("SAC", 0x03), ("SIC", 0x04)]
 
         record4 = A.create p018 $ do
-                    A.setItem "006" $ A.fromList [
-                                            [("ModeS", 0x010203)]
-                                            , [("ModeS", 0x020304)]
-                                       ]
+            A.setItem "006" $ A.fromList 
+                [ [("ModeS", 0x010203)]
+                , [("ModeS", 0x020304)]
+                ]
         
         record5 = A.create p048 $ do 
-                    A.setItem "130" $ A.fromValues [("SRL", 0xaa), ("SRR", 0xbb)]
+            A.setItem "130" $ A.fromValues [("SRL", 0xaa), ("SRR", 0xbb)]
 
         record6 = A.Item p048 $ B.bits 24 0x20FF8E
 
@@ -71,19 +72,21 @@ main = do
         item7b = A.Item p018_008 $ B.bits 16 0x0100
 
         record8 = A.create p062 $ do
-                    {-
-                        /105/LAT Fixed (32) 008238ca -> 45.7811129093 deg
-                        /105/LON Fixed (32) 001d6da2 -> 10.3458702564 deg
-                        /070 Fixed (24) 2dbacc -> 23413.59375 s
-                        /290 Compound (32) 70ff1010
-                            /290/PSR Fixed (8) ff
-                            /290/SSR Fixed (8) 10
-                            /290/MDS Fixed (8) 10
-                    -}
-                    A.setItem "105" $ A.fromValues [("LAT", 0X008238ca), ("LON", 0x001d6da2)]
-                    A.setItem "070" $ A.fromValue 0x2dbacc
-                    -- A.setItem "290" $ A.fromValue 0x70ff1010
-                    -- A.setItem "290" $ A.fromValues [("PSR", 0xff), ("SSR", 0x10), ("MDS", 0x10)]
+            {-
+                /105/LAT Fixed (32) 008238ca -> 45.7811129093 deg
+                /105/LON Fixed (32) 001d6da2 -> 10.3458702564 deg
+                /070 Fixed (24) 2dbacc -> 23413.59375 s
+                /290 Compound (32) 70ff1010
+                    /290/PSR Fixed (8) ff
+                    /290/SSR Fixed (8) 10
+                    /290/MDS Fixed (8) 10
+            -}
+            A.setItem "105" $ A.fromValues
+                [("LAT", 0X008238ca), ("LON", 0x001d6da2)]
+            A.setItem "070" $ A.fromValue 0x2dbacc
+            -- A.setItem "290" $ A.fromValue 0x70ff1010
+            -- A.setItem "290" $ A.fromValues 
+            --  [("PSR", 0xff), ("SSR", 0x10), ("MDS", 0x10)]
 
     print $ A.sizeOf p018_036 $ B.bits 100 0
     print $ A.sizeOf p018_036_SAC $ B.bits 100 0
@@ -114,7 +117,8 @@ main = do
     print $ A.childR ["010","SAC"] record2
     print $ A.toValue . fromJust $ A.childR ["010","SAC"] record2
     print $ A.childs . fromJust $ return record6 >>= A.child "020"
-    print $ map A.toValue $ A.childs . fromJust $ return record6 >>= A.child "020"
+    print $ 
+        map A.toValue $ A.childs . fromJust $ return record6 >>= A.child "020"
     print $ A.childs item7a
     print $ A.childs item7b
     print $ p062_105_LAT

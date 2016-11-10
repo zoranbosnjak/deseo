@@ -26,6 +26,7 @@
 --
 
 {-# LANGUAGE DeriveGeneric #-}
+{-# OPTIONS_GHC -funbox-strict-fields #-}
 
 module Data.BitString (
 
@@ -58,7 +59,8 @@ module Data.BitString (
 import Control.DeepSeq
 import Control.Monad
 import qualified Prelude as P
-import Prelude hiding (length, any, fromInteger, toInteger, take, drop, null, (!!))
+import Prelude 
+    hiding (length, any, fromInteger, toInteger, take, drop, null, (!!))
 import qualified Data.ByteString as S
 import Data.Word
 import qualified Data.Bits as B
@@ -68,7 +70,7 @@ import GHC.Generics
 import Test.QuickCheck
 
 -- | Bits data type.
-data Bits = Bits [Bool] deriving (Generic, Eq)
+data Bits = Bits ![Bool] deriving (Generic, Eq)
 
 instance NFData Bits
 
@@ -168,7 +170,8 @@ toSIntegral b
 
 -- | Convert bits to unsigned number.
 toUIntegral :: Num a => Bits -> a
-toUIntegral (Bits b) = sum . zipWith (*) factors . map boolVal . reverse $ b where
+toUIntegral (Bits b) = sum . zipWith (*) factors . map boolVal . reverse $ b 
+  where
     factors = map (2^) ([0..]::[Int])
 
 -- | Convert bytestring to Bits.
@@ -185,7 +188,8 @@ toByteString bs = do
         break8 [] = [] 
         break8 s = a : break8 b where (a,b) = splitAt 8 s
         toWord :: [Bool] -> Word8
-        toWord s = sum $ zipWith (*) (map (2^) ([7,6..0]::[Int])) (map boolVal s)
+        toWord s = sum $ 
+            zipWith (*) (map (2^) ([7,6..0]::[Int])) (map boolVal s)
 
 -- | Reverse all the bits.
 complement :: Bits -> Bits

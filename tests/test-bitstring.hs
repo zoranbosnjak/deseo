@@ -44,9 +44,10 @@ bits = do
     eq 2 1 [False,True]
     eq 2 2 [True,False]
     eq 2 3 [True,True]
-    where
-        eq :: Int -> Integer -> [Bool] -> Assertion
-        eq n a s = assertEqual ((show n) ++ "," ++ (show a)) s (B.unpack $ B.fromInteger n a)
+  where
+    eq :: Int -> Integer -> [Bool] -> Assertion
+    eq n a s = assertEqual ((show n) ++ "," ++ (show a)) s (B.unpack $
+        B.fromInteger n a)
 
 pack1 :: [Bool] -> Bool
 pack1 s = ((B.unpack . B.pack $ s) == s)
@@ -80,14 +81,17 @@ integral' = do
     eqi "to uintegral" 0 (B.toUIntegral . B.pack $ [False,False,False])
 
 bytestring' :: [Word8] -> Bool
-bytestring' s = (fromJust . B.toByteString . B.fromByteString . S.pack $ s) == (S.pack s)
+bytestring' s = 
+    (fromJust . B.toByteString . B.fromByteString . S.pack $ s) 
+    == (S.pack s)
 
 combine :: B.Bits -> B.Bits -> Bool
-combine a b =   (B.pack (B.unpack a ++ B.unpack b) == c)
-                && (B.take (B.length a) c == a)
-                && (B.drop (B.length a) c == b)
-                where 
-                    c = a `mappend` b
+combine a b =   
+    (B.pack (B.unpack a ++ B.unpack b) == c)
+    && (B.take (B.length a) c == a)
+    && (B.drop (B.length a) c == b)
+  where 
+    c = a `mappend` b
 
 zeros' :: Property
 zeros' = forAll (choose (0,100)) $ \n ->

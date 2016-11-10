@@ -1,5 +1,3 @@
-{-# LANGUAGE DeriveGeneric #-}
-
 ----------------
 -- |
 -- Module:      Data.Asterix.Expression
@@ -12,6 +10,9 @@
 -- for some basic expressions.
 --
 
+{-# LANGUAGE DeriveGeneric #-}
+{-# OPTIONS_GHC -funbox-strict-fields #-}
+
 module Data.Asterix.Expression
 (   EValue(..)
     , eval
@@ -22,10 +23,11 @@ import GHC.Generics
 import Language.Python.Version3 as P
 import Language.Python.Common.AST as A
 
-data EValue =
-    EInteger Integer
-    | EDouble Double
+data EValue 
+    = EInteger !Integer
+    | EDouble !Double
     deriving (Show, Generic)
+
 instance NFData EValue
 
 -- | Convert to Double
@@ -95,46 +97,46 @@ eval s = do
             Right (x,_) -> Just x
             _ -> Nothing
     eval2 ast
-    where
+  where
 
-        eval2 e@A.Int {} = Just . EInteger . int_value $ e
+    eval2 e@A.Int {} = Just . EInteger . int_value $ e
 
-        eval2 e@A.LongInt {} = Just . EInteger . int_value $ e
-        
-        eval2 e@A.Float {} = Just . EDouble . float_value $ e
-        
-        eval2 e@A.UnaryOp {op_arg=a} = do
-            x <- eval2 a
-            op <- case (operator e) of
-                    Plus {} -> Just id
-                    Minus {} -> Just negate
-                    _ -> Nothing
-            Just (op x)
+    eval2 e@A.LongInt {} = Just . EInteger . int_value $ e
+    
+    eval2 e@A.Float {} = Just . EDouble . float_value $ e
+    
+    eval2 e@A.UnaryOp {op_arg=a} = do
+        x <- eval2 a
+        op <- case (operator e) of
+            Plus {} -> Just id
+            Minus {} -> Just negate
+            _ -> Nothing
+        Just (op x)
 
-        eval2 e@A.BinaryOp {left_op_arg=l, right_op_arg=r} = do
-            x <- (eval2 l)
-            y <- (eval2 r) 
-            op <- case operator e of
-                    Plus {} -> Just (+)
-                    Minus {} -> Just (-)
-                    Multiply {} -> Just (*)
-                    Divide {} -> Just (/)
-                    _ -> Nothing
-            Just (x `op` y)
+    eval2 e@A.BinaryOp {left_op_arg=l, right_op_arg=r} = do
+        x <- (eval2 l)
+        y <- (eval2 r) 
+        op <- case operator e of
+            Plus {} -> Just (+)
+            Minus {} -> Just (-)
+            Multiply {} -> Just (*)
+            Divide {} -> Just (/)
+            _ -> Nothing
+        Just (x `op` y)
 
-        eval2 A.Paren {paren_expr=expr} = eval2 expr
+    eval2 A.Paren {paren_expr=expr} = eval2 expr
 
-        eval2 e@A.Call {} = do
-            let func = ident_string . var_ident . call_fun $ e
-                args' = map (eval2 . arg_expr) (call_args e)
-            args <- sequence args'
-            case func of
-                "pow" -> case args of
-                            [EInteger a, EInteger b] -> if (b>=0)
-                                                then Just . EInteger $ a^b
-                                                else Just . EDouble $ 1.0 / (fromInteger (a^(-b)))
-                            _ -> Nothing
+    eval2 e@A.Call {} = do
+        let func = ident_string . var_ident . call_fun $ e
+            args' = map (eval2 . arg_expr) (call_args e)
+        args <- sequence args'
+        case func of
+            "pow" -> case args of
+                [EInteger a, EInteger b] -> if (b>=0)
+                    then Just . EInteger $ a^b
+                    else Just . EDouble $ 1.0 / (fromInteger (a^(-b)))
                 _ -> Nothing
+            _ -> Nothing
 
-        eval2 _ = Nothing
+    eval2 _ = Nothing
 
