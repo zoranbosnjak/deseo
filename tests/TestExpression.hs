@@ -1,31 +1,34 @@
-module Main where
+module TestExpression (
+    testExpression
+) where
 
-import Test.Framework (defaultMain, testGroup)
+import Test.Framework (Test, testGroup)
 import Test.Framework.Providers.HUnit (testCase)
-import Test.HUnit
+import Test.HUnit (Assertion, assertEqual)
 import Test.Framework.Providers.QuickCheck2 (testProperty)
 import qualified Test.QuickCheck as QC
 
 import Data.Asterix
 
-main :: IO ()
-main = defaultMain tests where
-    tests = [
-            testGroup "Simple" [
-                    testCase "basic" testBasic
-                    , testCase "good" simpleGood
-                    , testCase "bad" simpleBad
-                ]
-            , testGroup "Complex" [
-                    testCase "good" complexGood
-                    , testCase "bad" complexBad
 
+testExpression :: Test
+testExpression = testGroup "Expression"
+    [
+        testGroup "Simple" [
+                testCase "basic" testBasic
+                , testCase "good" simpleGood
+                , testCase "bad" simpleBad
             ]
-            , testGroup "Functions" [
-                    testProperty "pow1" testPow1
-                    , testProperty "pow2" testPow2
-            ]
+        , testGroup "Complex" [
+                testCase "good" complexGood
+                , testCase "bad" complexBad
+
         ]
+        , testGroup "Functions" [
+                testProperty "pow1" testPow1
+                , testProperty "pow2" testPow2
+        ]
+    ]
 
 testBasic :: Assertion
 testBasic = do

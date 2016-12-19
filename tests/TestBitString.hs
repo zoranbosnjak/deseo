@@ -1,42 +1,44 @@
-module Main where
+module TestBitString (
+    testBitString
+) where
 
-import Data.Maybe
-import Data.Word
+import Data.Maybe (fromJust)
+import Data.Word (Word8)
 import qualified Data.ByteString as S
-import Test.Framework (defaultMain, testGroup)
+import Test.Framework (Test, testGroup)
 import Test.Framework.Providers.HUnit (testCase)
 import Test.Framework.Providers.QuickCheck2 (testProperty)
-import Test.QuickCheck
-import Test.HUnit
+import Test.QuickCheck (Property, choose, forAll)
+import Test.HUnit (Assertion, assertEqual)
 
 import qualified Data.BitString as B
 
-main :: IO ()
-main = defaultMain tests where
-    tests = [
-            testGroup "create" [
-                    testCase "bits" bits
-                ]
-            , testGroup "pack" [
-                    testProperty "pack1" pack1
-                    , testProperty "pack2" pack2
-                ]
-            , testGroup "util" [
-                    testProperty "length" length'
-                    , testProperty "take" take'
-                    , testProperty "drop" drop'
-                    , testProperty "zeros" zeros'
-                    , testCase "maybe" takeDropMaybe
-                    , testCase "any" testAny
+testBitString :: Test
+testBitString = testGroup "BitString"
+    [
+        testGroup "create" [
+                testCase "bits" bits
             ]
-            , testGroup "convert" [
-                    testCase "integral" integral'
-                    , testProperty "bytestring" bytestring'
+        , testGroup "pack" [
+                testProperty "pack1" pack1
+                , testProperty "pack2" pack2
             ]
-            , testGroup "other" [
-                    testProperty "combine" combine
-            ]
+        , testGroup "util" [
+                testProperty "length" length'
+                , testProperty "take" take'
+                , testProperty "drop" drop'
+                , testProperty "zeros" zeros'
+                , testCase "maybe" takeDropMaybe
+                , testCase "any" testAny
         ]
+        , testGroup "convert" [
+                testCase "integral" integral'
+                , testProperty "bytestring" bytestring'
+        ]
+        , testGroup "other" [
+                testProperty "combine" combine
+        ]
+    ]
 
 bits :: Assertion
 bits = do
@@ -81,16 +83,16 @@ integral' = do
     eqi "to uintegral" 0 (B.toUIntegral . B.pack $ [False,False,False])
 
 bytestring' :: [Word8] -> Bool
-bytestring' s = 
-    (fromJust . B.toByteString . B.fromByteString . S.pack $ s) 
+bytestring' s =
+    (fromJust . B.toByteString . B.fromByteString . S.pack $ s)
     == (S.pack s)
 
 combine :: B.Bits -> B.Bits -> Bool
-combine a b =   
+combine a b =
     (B.pack (B.unpack a ++ B.unpack b) == c)
     && (B.take (B.length a) c == a)
     && (B.drop (B.length a) c == b)
-  where 
+  where
     c = a `mappend` b
 
 zeros' :: Property
@@ -100,7 +102,7 @@ zeros' = forAll (choose (0,100)) $ \n ->
 takeDropMaybe :: Assertion
 takeDropMaybe = do
     let b = B.pack [True, False]
-    
+
     assertEqual "take1" (Just $ B.pack [True]) (B.takeMaybe 1 b)
     assertEqual "take2" (Just $ B.pack [True,False]) (B.takeMaybe 2 b)
     assertEqual "take3" Nothing (B.takeMaybe 3 b)
