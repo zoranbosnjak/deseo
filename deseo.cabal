@@ -5,11 +5,11 @@ license:             GPL-3
 license-file:        LICENSE
 author:              Zoran Bošnjak <zoran.bosnjak@sloveniacontrol.si>
 maintainer:          Zoran Bošnjak <zoran.bosnjak@sloveniacontrol.si>
--- copyright:           
--- category:            
+-- copyright:
+-- category:
 build-type:          Simple
 cabal-version:       >= 1.8
-description:         
+description:
     An Asterix decoding and encoding library.
 
 extra-source-files:
@@ -22,11 +22,11 @@ flag developer
     manual: True
 
 library
-    exposed-modules:     
+    exposed-modules:
         Data.Asterix
         Data.BitString
 
-    other-modules:       
+    other-modules:
         Data.Asterix.Expression
 
     build-depends:
@@ -43,48 +43,18 @@ library
     if flag(developer)
         ghc-options: -Werror
         ghc-prof-options: -auto-all
-    
+
     ghc-options: -O2 -Wall
 
 source-repository head
     type:     mercurial
     -- location: https://path.domain/url
 
-test-suite test-expression
+test-suite test-deseo
     type:       exitcode-stdio-1.0
     hs-source-dirs: tests
-    main-is:    test-expression.hs
-    build-depends:  
-                    base,
-                    deseo,
-                    HUnit,
-                    language-python,
-                    QuickCheck,
-                    test-framework,
-                    test-framework-hunit,
-                    test-framework-quickcheck2
-    ghc-options: -O2 -Wall
-
-test-suite test-bitstring
-    type:       exitcode-stdio-1.0
-    hs-source-dirs: tests
-    main-is:    test-bitstring.hs
-    build-depends:  
-                    base,
-                    deseo,
-                    HUnit,
-                    QuickCheck,
-                    bytestring,
-                    test-framework,
-                    test-framework-hunit,
-                    test-framework-quickcheck2
-    ghc-options: -O2 -Wall
-
-test-suite test-asterix
-    type:       exitcode-stdio-1.0
-    hs-source-dirs: tests
-    main-is:    test-asterix.hs
-    build-depends:  
+    main-is:    Main.hs
+    build-depends:
                     base,
                     containers,
                     deseo,
