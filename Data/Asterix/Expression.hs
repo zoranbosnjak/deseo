@@ -14,16 +14,20 @@
 {-# OPTIONS_GHC -funbox-strict-fields #-}
 
 module Data.Asterix.Expression
-(   EValue(..)
-    , eval
+( EValue(EInteger, EDouble)
+, eval
 ) where
 
-import Control.DeepSeq
-import GHC.Generics
-import Language.Python.Version3 as P
-import Language.Python.Common.AST as A
+import Control.Applicative ((<|>))
+import Control.DeepSeq (NFData)
+import Control.Monad (mzero, void)
+import GHC.Generics (Generic)
+import Text.Megaparsec (between, parseMaybe, try, spaceChar)
+import Text.Megaparsec.Expr (makeExprParser, Operator(InfixL))
+import Text.Megaparsec.String (Parser)
+import qualified Text.Megaparsec.Lexer as L
 
-data EValue 
+data EValue
     = EInteger !Integer
     | EDouble !Double
     deriving (Show, Generic)
@@ -73,6 +77,64 @@ instance Ord EValue where
     compare (EInteger val1) (EInteger val2) = compare val1 val2
     compare val1 val2 = compare (_toDouble val1) (_toDouble val2)
 
+
+data Expr
+  = EValue !EValue
+  | EPow !Integer !Integer
+  | EBinary !BinOp !Expr !Expr
+  deriving (Show)
+
+data BinOp
+  = Add
+  | Subtract
+  | Multiply
+  | Divide
+  deriving (Show)
+
+-- sc stands for "space consumer" as per Megaparsec convention
+sc :: Parser ()
+sc = L.space (void spaceChar) mzero mzero
+
+symbol :: String -> Parser String
+symbol = L.symbol sc
+
+parened :: Parser a -> Parser a
+parened = between (symbol "(") (symbol ")")
+
+integer :: Parser Integer
+integer = L.signed sc $ hex <|> L.integer where
+    hex = (try $ symbol "0x") >> L.hexadecimal
+
+double :: Parser Double
+double = L.signed sc L.float
+
+evalue :: Parser EValue
+evalue = try (EDouble <$> double) <|> (EInteger <$> integer)
+
+pow :: Parser Expr
+pow = do
+    void $ symbol "pow"
+    parened $ do
+        a <- integer
+        void $ symbol ","
+        b <- integer
+        return $ EPow a b
+
+binOp :: Parser Expr
+binOp = makeExprParser term
+  [ [ InfixL (EBinary Multiply <$ symbol "*")
+    , InfixL (EBinary Divide   <$ symbol "/") ]
+  , [ InfixL (EBinary Add      <$ symbol "+")
+    , InfixL (EBinary Subtract <$ symbol "-") ]
+  ]
+
+term :: Parser Expr
+term = parened expr <|> pow <|> (EValue <$> evalue)
+
+expr :: Parser Expr
+expr = binOp <|> term
+
+
 -- | Parse and evaluate string expression.
 -- Examples:
 --
@@ -92,51 +154,16 @@ instance Ord EValue where
 -- >    Nothing
 --
 eval :: String -> Maybe EValue
-eval s = do
-    ast <- case P.parseExpr s "" of
-            Right (x,_) -> Just x
-            _ -> Nothing
-    eval2 ast
-  where
+eval s = compute <$> parseMaybe expr s
 
-    eval2 e@A.Int {} = Just . EInteger . int_value $ e
-
-    eval2 e@A.LongInt {} = Just . EInteger . int_value $ e
-    
-    eval2 e@A.Float {} = Just . EDouble . float_value $ e
-    
-    eval2 e@A.UnaryOp {op_arg=a} = do
-        x <- eval2 a
-        op <- case (operator e) of
-            Plus {} -> Just id
-            Minus {} -> Just negate
-            _ -> Nothing
-        Just (op x)
-
-    eval2 e@A.BinaryOp {left_op_arg=l, right_op_arg=r} = do
-        x <- (eval2 l)
-        y <- (eval2 r) 
-        op <- case operator e of
-            Plus {} -> Just (+)
-            Minus {} -> Just (-)
-            Multiply {} -> Just (*)
-            Divide {} -> Just (/)
-            _ -> Nothing
-        Just (x `op` y)
-
-    eval2 A.Paren {paren_expr=expr} = eval2 expr
-
-    eval2 e@A.Call {} = do
-        let func = ident_string . var_ident . call_fun $ e
-            args' = map (eval2 . arg_expr) (call_args e)
-        args <- sequence args'
-        case func of
-            "pow" -> case args of
-                [EInteger a, EInteger b] -> if (b>=0)
-                    then Just . EInteger $ a^b
-                    else Just . EDouble $ 1.0 / (fromInteger (a^(-b)))
-                _ -> Nothing
-            _ -> Nothing
-
-    eval2 _ = Nothing
-
+compute :: Expr -> EValue
+compute (EValue e) = e
+compute (EPow m e) = if (e>=0)
+                     then EInteger $ m^e
+                     else EDouble $ 1.0 / (fromInteger (m^(-e)))
+compute (EBinary op a b) =
+    let f = case op of Add -> (+)
+                       Subtract -> (-)
+                       Multiply -> (*)
+                       Divide -> (/)
+    in  f (compute a) (compute b)
