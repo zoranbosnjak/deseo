@@ -26,7 +26,6 @@
 --
 
 {-# LANGUAGE DeriveGeneric #-}
-{-# OPTIONS_GHC -funbox-strict-fields #-}
 
 module Data.BitString (
 
@@ -59,36 +58,33 @@ module Data.BitString (
 import Control.DeepSeq
 import Control.Monad
 import qualified Prelude as P
-import Prelude 
+import Prelude
     hiding (length, any, fromInteger, toInteger, take, drop, null, (!!))
 import qualified Data.ByteString as S
 import Data.Word
 import qualified Data.Bits as B
-import Data.List (foldl1')
+import Data.List (intersperse)
 import GHC.Generics
 
 import Test.QuickCheck
 
 -- | Bits data type.
-data Bits = Bits ![Bool] deriving (Generic, Eq)
+newtype Bits = Bits [Bool] deriving (Generic, Eq, Monoid)
 
 instance NFData Bits
 
 instance Show Bits where
+    -- TODO simplfy
     show (Bits bb) = "Bits " ++ disp bb where
         disp [] = ""
-        disp x = foldl1' (\a b -> a++" "++b) . spl . map f $ x
+        disp x = intersperse ' ' . spl . map f $ x
         f True = '1'
         f False = '0'
         spl [] = []
-        spl s = 
+        spl s =
             let (a,b) = splitAt 8 s
             in (fill a):(spl b)
         fill a = P.take 8 (a++repeat '.')
-
-instance Monoid Bits where
-    mempty = Bits []
-    Bits a `mappend` Bits b = Bits (a `mappend` b)
 
 instance Arbitrary Bits where
     arbitrary = liftM Bits arbitrary
@@ -119,7 +115,7 @@ dropMaybe n b
 
 -- | Return bit at given index.
 index :: Bits -> Int -> Bool
-index (Bits b) n = (P.!!) b n
+index (Bits b) n = b P.!! n
 
 -- | Convert from list of Bool values to Bits
 pack :: [Bool] -> Bits
@@ -135,7 +131,7 @@ null (Bits b) = P.null b
 
 -- | Return 'n' bits of all zero values.
 zeros :: Int -> Bits
-zeros n = fromInteger n (0::Integer)
+zeros n = Bits $ replicate n False
 
 -- | Generate bitstring of given bit length and value,
 -- for example:
@@ -143,9 +139,8 @@ zeros n = fromInteger n (0::Integer)
 -- >    bits 16 0x1234
 --
 fromInteger :: Int -> Integer -> Bits
-fromInteger n val = Bits . map toBool $ f n val [] where
-    f 0 _ acc = acc
-    f n' val' acc = f (n'-1) a (b:acc) where
+fromInteger n val = Bits $ f n val [] where
+    f n' val' !acc = f (n'-1) a (f b:acc) where
         (a,b) = divMod val' 2
     toBool 0 = False
     toBool _ = True
@@ -170,7 +165,7 @@ toSIntegral b
 
 -- | Convert bits to unsigned number.
 toUIntegral :: Num a => Bits -> a
-toUIntegral (Bits b) = sum . zipWith (*) factors . map boolVal . reverse $ b 
+toUIntegral (Bits b) = sum . zipWith (*) factors . map boolVal . reverse $ b
   where
     factors = map (2^) ([0..]::[Int])
 
@@ -185,10 +180,10 @@ toByteString bs = do
     (Bits s) <- checkAligned bs
     return . S.pack . map toWord . break8 $ s where
         break8 :: [a] -> [[a]]
-        break8 [] = [] 
+        break8 [] = []
         break8 s = a : break8 b where (a,b) = splitAt 8 s
         toWord :: [Bool] -> Word8
-        toWord s = sum $ 
+        toWord s = sum $
             zipWith (*) (map (2^) ([7,6..0]::[Int])) (map boolVal s)
 
 -- | Reverse all the bits.
@@ -197,9 +192,8 @@ complement (Bits b) = Bits $ map not b
 
 -- | Is any bit set?
 anySet :: Bits -> Bool
-anySet = P.any (==True) . unpack
+anySet = P.any id . unpack
 
 -- | Are all bits set?
 allSet :: Bits -> Bool
-allSet = P.all (==True) . unpack
-
+allSet = P.all id . unpack

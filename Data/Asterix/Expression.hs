@@ -11,7 +11,6 @@
 --
 
 {-# LANGUAGE DeriveGeneric #-}
-{-# OPTIONS_GHC -funbox-strict-fields #-}
 
 module Data.Asterix.Expression
 ( EValue(EInteger, EDouble)
@@ -28,8 +27,8 @@ import Text.Megaparsec.String (Parser)
 import qualified Text.Megaparsec.Lexer as L
 
 data EValue
-    = EInteger !Integer
-    | EDouble !Double
+    = EInteger Integer
+    | EDouble Double
     deriving (Show, Generic)
 
 instance NFData EValue
@@ -79,9 +78,9 @@ instance Ord EValue where
 
 
 data Expr
-  = EValue !EValue
-  | EPow !Integer !Integer
-  | EBinary !BinOp !Expr !Expr
+  = EValue EValue
+  | EPow Integer Integer
+  | EBinary BinOp Expr Expr
   deriving (Show)
 
 data BinOp
