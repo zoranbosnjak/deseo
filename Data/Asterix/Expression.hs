@@ -11,10 +11,9 @@
 --
 
 {-# LANGUAGE DeriveGeneric #-}
-{-# OPTIONS_GHC -funbox-strict-fields #-}
 
 module Data.Asterix.Expression
-(   EValue(..)
+(   EValue(EInteger, EDouble)
     , eval
 ) where
 
@@ -23,9 +22,9 @@ import GHC.Generics
 import Language.Python.Version3 as P
 import Language.Python.Common.AST as A
 
-data EValue 
-    = EInteger !Integer
-    | EDouble !Double
+data EValue
+    = EInteger Integer
+    | EDouble Double
     deriving (Show, Generic)
 
 instance NFData EValue
@@ -102,9 +101,9 @@ eval s = do
     eval2 e@A.Int {} = Just . EInteger . int_value $ e
 
     eval2 e@A.LongInt {} = Just . EInteger . int_value $ e
-    
+
     eval2 e@A.Float {} = Just . EDouble . float_value $ e
-    
+
     eval2 e@A.UnaryOp {op_arg=a} = do
         x <- eval2 a
         op <- case (operator e) of
@@ -115,7 +114,7 @@ eval s = do
 
     eval2 e@A.BinaryOp {left_op_arg=l, right_op_arg=r} = do
         x <- (eval2 l)
-        y <- (eval2 r) 
+        y <- (eval2 r)
         op <- case operator e of
             Plus {} -> Just (+)
             Minus {} -> Just (-)

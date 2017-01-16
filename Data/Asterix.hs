@@ -13,12 +13,12 @@
 -- Examples:
 --
 --      * parse XML
---  
+--
 -- >        s <- readFile "path/to/catXY.xml"
 -- >        let c = categoryDescription s
 --
 --      * parse many XML files
---        
+--
 -- >        import Control.Exception (evaluate)
 -- >        import Control.DeepSeq (force)
 -- >
@@ -61,19 +61,18 @@
 -- >            "010" <! fromBits (B.fromInteger 16 0x0102)
 -- >            "020" <! fromRawInt 0x0203
 -- >            "030" <! fromValues fromRawInt [("SAC", 0x01), ("SIC", 0x02)]
--- >           
+-- >
 -- >        rec <- fromValues fromRawInt [("010", 0x0102)] catXY
 --
--- >        rec <- fromRepetitiveValues (fromValues fromRawInt) 
+-- >        rec <- fromRepetitiveValues (fromValues fromRawInt)
 --              [ [("A", 1), ("B", 2)], [("A", 3), ("B", 4)] ]
 --
 --
 
 {-# LANGUAGE DeriveGeneric #-}
-{-# OPTIONS_GHC -funbox-strict-fields #-}
 
 module Data.Asterix
-(   
+(
     -- * Data types
     Tip(..)
     , Item(..)
@@ -89,7 +88,7 @@ module Data.Asterix
     -- * Datablock
     , DataBlock(..)
     , toDataBlocks
-    , datablock 
+    , datablock
 
     -- * XML parsers
     , categoryDescription
@@ -155,13 +154,8 @@ import Text.XML.Light.Lexer (XmlSource)
 import qualified Data.BitString as B
 import Data.Asterix.Expression
 
--- for debug purposes
-import Debug.Trace
-_dump :: c -> String -> c
-_dump = flip trace
-
 -- | Asterix item types
-data Tip 
+data ItemType
     = TItem
     | TFixed
     | TSpare
@@ -176,33 +170,33 @@ data Tip
 instance NFData Tip
 
 -- | description + data
-data Item = Item 
-    { iDsc  :: !Desc 
-    , iBits :: !B.Bits 
+data Item = Item
+    { iDsc  :: Desc
+    , iBits :: B.Bits
     } deriving (Generic, Show, Eq)
 
 instance NFData Item
 
 -- | Asterix item description
-data Desc = Desc 
-    { dName     :: !ItemName
-    , dTip      :: !Tip
-    , dDsc      :: !ItemDescription
-    , dLen      :: !Length
-    , dItems    :: ![Desc]
-    , dValue    :: !Value
+data Desc = Desc
+    { dName     :: ItemName
+    , dTip      :: Tip
+    , dDsc      :: ItemDescription
+    , dLen      :: Length
+    , dItems    :: [Desc]
+    , dValue    :: Value
     } deriving (Eq, Generic)
 
 instance NFData Desc
 
 instance Show Desc where
     show d
-        = (show . dTip $ d) ++ " (" ++ (dName d) ++ "), " 
+        = (show . dTip $ d) ++ " (" ++ (dName d) ++ "), "
         ++ (show . dLen $ d) ++ ", " ++ (show $ dValue d)
 
 -- | Empty description
 noDesc :: Desc
-noDesc = Desc 
+noDesc = Desc
     { dName = ""
     , dTip = TItem
     , dDsc = ""
@@ -210,6 +204,7 @@ noDesc = Desc
     , dItems = []
     , dValue = VRaw
     }
+-- TODO instance Default
 
 type Cat = Word8
 type Uap = (UapName,Desc)
@@ -221,22 +216,22 @@ type Minor = Int
 type Size = Int
 
 -- | Asterix standard (particular edition)
-data Category = Category 
-    { cCat      :: !Cat 
-    , cEdition  :: !Edition 
-    , cUaps     :: ![Uap]
+data Category = Category
+    { cCat      :: Cat
+    , cEdition  :: Edition
+    , cUaps     :: [Uap]
     } deriving (Generic)
 
 instance NFData Category
 
 instance Show Category where
-    show c = "(category " ++ (show $ cCat c) 
+    show c = "(category " ++ (show $ cCat c)
         ++ ", edition " ++ (show $ cEdition c) ++ ")"
 
 type Profiles = Map.Map Cat Category
 
 -- | Asterix edition
-data Edition = Edition !Major !Minor deriving (Eq, Generic)
+data Edition = Edition Major Minor deriving (Eq, Generic)
 
 instance NFData Edition
 
@@ -253,7 +248,7 @@ instance Read Edition where
         b = tail . dropWhile (/='.') $ value
 
 -- | Length of asterix item
-data Length = Length0 | Length1 !Int | Length2 !Int !Int
+data Length = Length0 | Length1 Int | Length2 Int Int
     deriving (Show, Read, Eq, Generic)
 
 instance NFData Length
@@ -263,20 +258,20 @@ type Unit = String
 type Min = EValue
 type Max = EValue
 
-data Value 
+data Value
     = VRaw
     | VString
-    | VDecimal !Lsb !(Maybe Unit) !(Maybe Min) !(Maybe Max)
-    | VUnsignedDecimal !Lsb !(Maybe Unit) !(Maybe Min) !(Maybe Max)
-    | VInteger !(Maybe Unit) !(Maybe Min) !(Maybe Max)
-    | VUnsignedInteger !(Maybe Unit) !(Maybe Min) !(Maybe Max)
+    | VDecimal Lsb (Maybe Unit) (Maybe Min) (Maybe Max)
+    | VUnsignedDecimal Lsb (Maybe Unit) (Maybe Min) (Maybe Max)
+    | VInteger (Maybe Unit) (Maybe Min) (Maybe Max)
+    | VUnsignedInteger (Maybe Unit) (Maybe Min) (Maybe Max)
     deriving (Eq, Show, Generic)
 
 instance NFData Value
 
-data DataBlock = DataBlock 
-    { dbCat     :: !Cat
-    , dbData    :: !B.Bits
+data DataBlock = DataBlock
+    { dbCat     :: Cat
+    , dbData    :: B.Bits
     } deriving (Generic, Eq, Show)
 
 instance NFData DataBlock
@@ -306,11 +301,11 @@ categorySelect dsc requested = do
 categorySelectAll :: [Category] -> Either String (Map.Map Cat [Category])
 categorySelectAll dsc = do
     let cats = nub . map cCat $ dsc
-    p <- forM cats $ \cat -> do
-        let editions = 
+    p <- forM cats $ \cat ->
+        let editions =
                 sortBy (compare `on` cEdition) . filter ((==cat) . cCat) $ dsc
             eds = map cEdition editions
-        case nub eds == eds of
+        in case nub eds == eds of
             True -> Right $ (cat, editions)
             False -> Left $ "duplicated editions in cat: " ++ show cat
     Right $ Map.fromList p
@@ -318,10 +313,11 @@ categorySelectAll dsc = do
 -- | Read xml content.
 categoryDescription :: XmlSource s => s -> Either String Category
 categoryDescription src = do
+    -- TODO break into smaller pieces
     let elements = X.onlyElems . X.parseXML $ src
-        filteredElements = 
+        filteredElements =
             filter (\e -> (X.qName . X.elName $ e) == "category") $ elements
-     
+
     category <- case filteredElements of
         [] -> Left "<category> not found in xml"
         (x:_) -> Right x
@@ -341,11 +337,11 @@ categoryDescription src = do
                 case item of
                     "" -> Right noDesc
                     _ -> case (lookup item items) of
-                        Nothing -> Left $ "item " ++ (show item) 
+                        Nothing -> Left $ "item " ++ (show item)
                             ++ " not found in <items>"
                         Just x -> Right x
             let uapName = X.qName . X.elName $ uap
-                topLevel = Desc 
+                topLevel = Desc
                     { dName = ""
                     , dTip = TCompound
                     , dDsc = "Category " ++ (show cat)
@@ -355,19 +351,19 @@ categoryDescription src = do
                     }
             return (uapName, topLevel)
 
-    Right $ Category {cCat=cat, cEdition=ed, cUaps=dscr} 
+    Right $ Category {cCat=cat, cEdition=ed, cUaps=dscr}
 
   where
 
     nameOf s = X.blank_name {X.qName=s}
 
     getAttr el aName = case X.findAttr (nameOf aName) el of
-        Nothing -> Left $ 
+        Nothing -> Left $
             "Attribute '"++aName++ "' not found in element " ++ (show el)
         Just x -> Right $ read x
 
     getChild el aName = case X.findChild (nameOf aName) el of
-        Nothing -> Left $ 
+        Nothing -> Left $
             "Child '"++aName++ "' not found in element " ++ (show el)
         Just x -> Right x
 
@@ -394,19 +390,19 @@ categoryDescription src = do
             x <- total i
             rest <- total (dsc' {dItems=is})
             Just (x + rest)
-    
+
     readItem :: X.Element -> Either String Desc
-    readItem el = dsc' el >>= f where 
+    readItem el = dsc' el >>= f where
 
         -- check description, recalculate length
         f :: Desc -> Either String Desc
-        f dsc@Desc {dTip=TItem, dLen=Length0} = Right $ 
+        f dsc@Desc {dTip=TItem, dLen=Length0} = Right $
             dsc {dLen=recalculateLen dsc}
         f dsc@Desc {dTip=TFixed, dLen=Length1 _, dItems=[]} = Right dsc
         f dsc@Desc {dTip=TSpare, dLen=Length1 _, dItems=[]} = Right dsc
         f dsc@Desc {dTip=TExtended, dLen=Length2 _ _} = Right dsc
         f dsc@Desc {dTip=TExtendedVariant, dLen=Length2 _ _} = Right dsc
-        f dsc@Desc {dTip=TRepetitive, dLen=Length0, dItems=(_:_)} = Right $ 
+        f dsc@Desc {dTip=TRepetitive, dLen=Length0, dItems=(_:_)} = Right $
             dsc {dLen=recalculateLen dsc}
         f dsc@Desc {dTip=TExplicit, dLen=Length0, dItems=[]} = Right dsc
         f dsc@Desc {dTip=TCompound, dLen=Length0, dItems=(_:_)} = Right dsc
@@ -418,17 +414,17 @@ categoryDescription src = do
             name <- case X.findAttr (nameOf "name") e of
                 Nothing -> Right ""
                 Just n -> Right n
-            tip <- return . read . ("T"++) . fromMaybe "Item" 
+            tip <- return . read . ("T"++) . fromMaybe "Item"
                 . X.findAttr (nameOf "type") $ e
-            dsc <- return $ either (\_->"") (X.strContent) 
+            dsc <- return $ either (\_->"") (X.strContent)
                 (getChild e "dsc")
-            len <- return (either (\_->"") (X.strContent) 
+            len <- return (either (\_->"") (X.strContent)
                 (getChild e "len")) >>= readLength
-            items <- sequence $ map readItem $ 
+            items <- sequence $ map readItem $
                 either (\_->[]) X.elChildren (getChild e "items")
             val <- getValueTip e
 
-            Right $ Desc 
+            Right $ Desc
                 { dName = name
                 , dTip = tip
                 , dDsc = dsc
@@ -453,7 +449,7 @@ categoryDescription src = do
                             Just val -> Right $ Just val
 
                 lsb <- tryGetChild conv "lsb" >>= tryEval
-                unit <- tryGetChild conv "unit" 
+                unit <- tryGetChild conv "unit"
                 min' <- tryGetChild conv "min" >>= tryEval
                 max' <- tryGetChild conv "max" >>= tryEval
 
@@ -464,10 +460,10 @@ categoryDescription src = do
                         Just lsb' -> Right $ VDecimal lsb' unit min' max'
                     "unsigned decimal" -> case lsb of
                         Nothing -> Left $ "'lsb' missing " ++ (show el')
-                        Just lsb' -> 
+                        Just lsb' ->
                             Right $ VUnsignedDecimal lsb' unit min' max'
                     "integer" -> Right $ VInteger unit min' max'
-                    "unsigned integer" -> 
+                    "unsigned integer" ->
                         Right $ VUnsignedInteger unit min' max'
                     _ -> Right VRaw
 
@@ -502,7 +498,7 @@ toRecords profiles db = do
     let cat = dbCat db
         d = dbData db
     category <- Map.lookup cat profiles
-    getRecords category d 
+    getRecords category d
   where
     getRecords :: Category -> B.Bits -> Maybe [Item]
     getRecords category bs
@@ -556,20 +552,21 @@ sizeOf Desc {dTip=TFixed, dLen=Length1 n} b = checkSize n b
 -- size of Spare
 sizeOf Desc {dTip=TSpare, dLen=Length1 n} b = do
     size <- checkSize n b
-    if (B.take size b) /= (B.zeros size) 
+    -- TODO: use guard
+    if (B.take size b) /= (B.zeros size)
         then Nothing
         else Just size
 
 -- size of Extended
 sizeOf Desc {dTip=TExtended, dLen=Length2 n1 n2} b = do
     size <- checkSize n1 b
-    if (B.index b (size-1)) 
+    if (B.index b (size-1))
         then dig size
         else Just size
   where
-    dig offset = do 
+    dig offset = do
         size <- checkSize offset b
-        if (B.index b (size-1)) 
+        if (B.index b (size-1))
             then dig (size+n2)
             else Just size
 
@@ -604,8 +601,8 @@ sizeOf Desc {dTip=TExplicit} b = do
 -- size of Compound
 sizeOf Desc {dTip=TCompound, dItems=items} b' = do
     b <- B.checkAligned b'
-    let (fspec, fspecTotal) = fromMaybe ([],[]) (getFspec b)
-        subitems = [(dName dsc,dsc) | (f,dsc) <- zip fspec items, (f==True)]
+    (fspec, fspecTotal) <- getFspec b
+    let subitems = [(dName dsc,dsc) | (f,dsc) <- zip fspec items, (f==True)]
         offset = length fspecTotal
         fspecMin = dropWhileEnd (==False) fspec
 
@@ -625,7 +622,7 @@ sizeOf _ _ = Nothing
 -- >    return item >>= child "010" >>= child "SAC"
 --
 child :: ItemName -> Item -> Maybe Item
-child name item = childs item >>= return . lookup name >>= join
+child name item = childs item >>= lookup name
 
 -- | Get deep subitem.
 --
@@ -640,7 +637,7 @@ childs :: Item -> Maybe [(ItemName,Maybe Item)]
 childs item
 
     -- Item
-    | tip == TItem = do 
+    | tip == TItem = do
         let consume [] _ = Just []
             consume (i:is) b' = do
                 (x,y) <- grab i b'
@@ -732,7 +729,7 @@ childs item
 
     -- Compound
     | tip == TCompound = do
-        let (fspec, fspecTotal) = fromMaybe ([],[]) (getFspec b)
+        (fspec, fspecTotal) <- getFspec b
 
         let fspec' = fspec ++ (repeat False)
 
@@ -769,7 +766,7 @@ unChilds :: Desc -> [(ItemName,Maybe Item)] -> Maybe Item
 unChilds dsc present = case (dTip dsc) of
     TCompound -> do
         let items = dItems dsc
-            bs = B.pack fspecTotal 
+            bs = B.pack fspecTotal
                 `mappend` (mconcat . map iBits . catMaybes . map snd $ present)
             fspecTotal
                 | fspec == [] = []
@@ -788,6 +785,7 @@ unChilds dsc present = case (dTip dsc) of
     _ -> Nothing
 
 -- | Create compound item from profile and transform function.
+-- TODO: try to replace with: MaybeT (State Item) ->
 create :: Desc -> State (Maybe Item) () -> Maybe Item
 create dsc transform
     | tip==TCompound = execState transform $ emptyRecord dsc
@@ -843,7 +841,7 @@ failItem = state $ \_ -> ((), Nothing)
 delItem :: String -> State (Maybe Item) ()
 delItem = undefined -- TODO
 
--- convert functions: 
+-- convert functions:
 
 _chkLimit :: Maybe t -> (a -> t -> Bool) -> a -> Maybe a
 _chkLimit Nothing _ val = Just val
@@ -867,15 +865,15 @@ fromBits val dsc = case (dTip dsc) of
 
 -- | Convert from raw value (item size must be known).
 fromRaw :: Integral a => a -> Desc -> Maybe Item
-fromRaw val dsc@Desc {dLen=Length1 len} = 
+fromRaw val dsc@Desc {dLen=Length1 len} =
     Just $ Item dsc $ B.fromInteger len $ fromIntegral val
 fromRaw _ _ = Nothing
 
 fromRawInt :: Int -> Desc -> Maybe Item
-fromRawInt = fromRaw 
+fromRawInt = fromRaw
 
 fromRawInteger :: Integer -> Desc -> Maybe Item
-fromRawInteger = fromRaw 
+fromRawInteger = fromRaw
 
 -- | Convert from natural value.
 fromNatural :: EValue -> Desc -> Maybe Item
@@ -909,9 +907,7 @@ fromValues f list parentDsc = case (dTip parentDsc) of
         return $ Item parentDsc (mconcat . map iBits $ l)
 
     TCompound -> do
-        let transform = foldr (>>) noChange transforms
-            noChange = state $ \i -> ((), i)
-            transforms = [putItem name (f val) | (name,val) <- list]
+        let transform = sequence_ [putItem name (f val) | (name,val) <- list]
         create parentDsc transform
 
     TExtended -> do
@@ -975,7 +971,7 @@ fromValues f list parentDsc = case (dTip parentDsc) of
                     rest <- genSec (n' - B.length b) bs
                     Just $ b:rest
             genSec _ _ = Nothing
-        
+
         guard $ (length names1) >= n
         guard $ (take n names1) == names2
         l <- sequence [f val d | (val,d) <- zip values items]
@@ -985,7 +981,7 @@ fromValues f list parentDsc = case (dTip parentDsc) of
 
     _ -> Nothing
 
-  where 
+  where
     items = dItems parentDsc
     names1 = map dName items
     names2 = map fst list
@@ -999,7 +995,7 @@ fromRepetitiveValues f list parentDsc = case (dTip parentDsc) of
         guard $ (length list) <= 255
         let n = B.fromInteger 8 $ fromIntegral $ length list
             -- tip is TRepetitive, but individual items are TItem
-            dsc = parentDsc {dTip=TItem} 
+            dsc = parentDsc {dTip=TItem}
         items <- sequence [f val dsc | val <- list] >>= return . map iBits
         return $ Item parentDsc $ mconcat (n:items)
 
@@ -1026,6 +1022,6 @@ toNatural item = do
         VInteger _ mmin mmax -> Just (sval, mmin, mmax)
         VUnsignedInteger _ mmin mmax -> Just (uval, mmin, mmax)
         _ -> Nothing
-    
+
     return val >>= _chkLimit mmin (<) >>= _chkLimit mmax (>)
 
