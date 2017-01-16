@@ -74,7 +74,7 @@
 module Data.Asterix
 (
     -- * Data types
-    Tip(..)
+    ItemType(..)
     , Item(..)
     , Desc(..)
     , Category(..), Edition(..), Uap
@@ -167,7 +167,7 @@ data ItemType
     | TRfs
     deriving (Show, Read, Eq, Generic)
 
-instance NFData Tip
+instance NFData ItemType
 
 -- | description + data
 data Item = Item
@@ -177,10 +177,12 @@ data Item = Item
 
 instance NFData Item
 
+-- TODO: tip -> itemType, search for "tip"
+
 -- | Asterix item description
 data Desc = Desc
     { dName     :: ItemName
-    , dTip      :: Tip
+    , dTip      :: ItemType
     , dDsc      :: ItemDescription
     , dLen      :: Length
     , dItems    :: [Desc]
@@ -601,8 +603,8 @@ sizeOf Desc {dTip=TExplicit} b = do
 -- size of Compound
 sizeOf Desc {dTip=TCompound, dItems=items} b' = do
     b <- B.checkAligned b'
-    (fspec, fspecTotal) <- getFspec b
-    let subitems = [(dName dsc,dsc) | (f,dsc) <- zip fspec items, (f==True)]
+    let (fspec, fspecTotal) = fromMaybe ([],[]) (getFspec b)
+        subitems = [(dName dsc,dsc) | (f,dsc) <- zip fspec items, (f==True)]
         offset = length fspecTotal
         fspecMin = dropWhileEnd (==False) fspec
 
@@ -622,7 +624,7 @@ sizeOf _ _ = Nothing
 -- >    return item >>= child "010" >>= child "SAC"
 --
 child :: ItemName -> Item -> Maybe Item
-child name item = childs item >>= lookup name
+child name item = childs item >>= return . lookup name >>= join
 
 -- | Get deep subitem.
 --
@@ -729,7 +731,7 @@ childs item
 
     -- Compound
     | tip == TCompound = do
-        (fspec, fspecTotal) <- getFspec b
+        let (fspec, fspecTotal) = fromMaybe ([],[]) (getFspec b)
 
         let fspec' = fspec ++ (repeat False)
 

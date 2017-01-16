@@ -26,6 +26,7 @@
 --
 
 {-# LANGUAGE DeriveGeneric #-}
+{-# LANGUAGE GeneralizedNewtypeDeriving #-}
 
 module Data.BitString (
 
@@ -63,7 +64,7 @@ import Prelude
 import qualified Data.ByteString as S
 import Data.Word
 import qualified Data.Bits as B
-import Data.List (intersperse)
+import Data.List (unfoldr)
 import GHC.Generics
 
 import Test.QuickCheck
@@ -74,17 +75,15 @@ newtype Bits = Bits [Bool] deriving (Generic, Eq, Monoid)
 instance NFData Bits
 
 instance Show Bits where
-    -- TODO simplfy
-    show (Bits bb) = "Bits " ++ disp bb where
-        disp [] = ""
-        disp x = intersperse ' ' . spl . map f $ x
-        f True = '1'
-        f False = '0'
-        spl [] = []
-        spl s =
+    show (Bits bb) = "Bits " ++ unwords octets where
+        octets = unfoldr getOctet bb
+        getOctet [] = Nothing
+        getOctet s =
             let (a,b) = splitAt 8 s
-            in (fill a):(spl b)
-        fill a = P.take 8 (a++repeat '.')
+                octet = P.take 8 ((bitValue <$> a) ++ repeat '.')
+            in Just (octet, b)
+        bitValue True = '1'
+        bitValue False = '0'
 
 instance Arbitrary Bits where
     arbitrary = liftM Bits arbitrary
@@ -136,14 +135,16 @@ zeros n = Bits $ replicate n False
 -- | Generate bitstring of given bit length and value,
 -- for example:
 --
--- >    bits 16 0x1234
+-- >    fromInteger 16 0x1234 == Bits 00010010 00110100
 --
 fromInteger :: Int -> Integer -> Bits
-fromInteger n val = Bits $ f n val [] where
-    f n' val' !acc = f (n'-1) a (f b:acc) where
-        (a,b) = divMod val' 2
-    toBool 0 = False
-    toBool _ = True
+fromInteger n val = Bits $ reverse $ unfoldr f (n,val) where
+    f (0,_) = Nothing
+    f (n', val') =
+        let (a,b) = val' `divMod` 2
+        in Just (bitValue b, (n'-1, a))
+    bitValue 0 = False
+    bitValue _ = True
 
 -- | If byte aligned, return Just value, else 'Nothing'.
 checkAligned :: Bits -> Maybe Bits
