@@ -141,18 +141,18 @@ import Data.Function (on)
 import Data.Maybe (fromMaybe, isJust, catMaybes)
 import Data.List (dropWhileEnd, nub, sortBy)
 import qualified Data.Map as Map
-import Data.Word
+import Data.Word (Word8)
 
-import Control.DeepSeq
-import Control.Monad
-import Control.Monad.State
-import GHC.Generics
+import Control.DeepSeq (NFData)
+import Control.Monad (forM, guard, join)
+import Control.Monad.State (State, state, execState)
+import GHC.Generics (Generic)
 
 import qualified Text.XML.Light as X
 import Text.XML.Light.Lexer (XmlSource)
 
 import qualified Data.BitString as B
-import Data.Asterix.Expression
+import Data.Asterix.Expression (EValue(EInteger, EDouble), eval)
 
 -- | Asterix item types
 data ItemType
