@@ -70,7 +70,7 @@ import GHC.Generics
 import Test.QuickCheck
 
 -- | Bits data type.
-newtype Bits = Bits [Bool] deriving (Generic, Eq, Monoid)
+newtype Bits = Bits [Bool] deriving (Generic, Eq, Monoid, Arbitrary)
 
 instance NFData Bits
 
@@ -84,9 +84,6 @@ instance Show Bits where
             in Just (octet, b)
         bitValue True = '1'
         bitValue False = '0'
-
-instance Arbitrary Bits where
-    arbitrary = liftM Bits arbitrary
 
 -- | Calculate length of bitstring.
 length :: Bits -> Int
