@@ -26,7 +26,7 @@ library
         Data.Asterix
         Data.BitString
 
-    other-extensions: StrictData
+    default-extensions: StrictData
 
     other-modules:
         Data.Asterix.Expression
