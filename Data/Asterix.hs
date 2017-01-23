@@ -141,18 +141,18 @@ import Data.Function (on)
 import Data.Maybe (fromMaybe, isJust, catMaybes)
 import Data.List (dropWhileEnd, nub, sortBy)
 import qualified Data.Map as Map
-import Data.Word
+import Data.Word (Word8)
 
-import Control.DeepSeq
-import Control.Monad
-import Control.Monad.State
-import GHC.Generics
+import Control.DeepSeq (NFData)
+import Control.Monad (forM, guard, join)
+import Control.Monad.State (State, state, execState)
+import GHC.Generics (Generic)
 
 import qualified Text.XML.Light as X
 import Text.XML.Light.Lexer (XmlSource)
 
 import qualified Data.BitString as B
-import Data.Asterix.Expression
+import Data.Asterix.Expression (EValue(EInteger, EDouble), eval)
 
 -- | Asterix item types
 data ItemType
@@ -287,27 +287,25 @@ datablock cat items = DataBlock {dbCat=cat, dbData=bs} where
 categorySelect :: [Category] -> [(Cat,Edition)] -> Either String Profiles
 categorySelect dsc requested = do
     dsc' <- categorySelectAll dsc
-    p <- forM (Map.toList dsc') $ \(cat,editions) -> do
+    fmap Map.fromList $ forM (Map.toList dsc') $ \(cat,editions) -> do
         case lookup cat requested of
             Nothing -> Right $ (cat, last editions)
             Just ed -> case lookup ed [(cEdition c, c) | c <- editions] of
                 Nothing -> Left $ "Cat " ++ (show cat)
                     ++ ", edition " ++ (show ed) ++ " not found!"
                 Just val -> Right (cat, val)
-    Right $ Map.fromList p
 
 -- | Group descriptions by category and sort by edition
 categorySelectAll :: [Category] -> Either String (Map.Map Cat [Category])
-categorySelectAll dsc = do
+categorySelectAll dsc =
     let cats = nub . map cCat $ dsc
-    p <- forM cats $ \cat ->
-        let editions =
-                sortBy (compare `on` cEdition) . filter ((==cat) . cCat) $ dsc
-            eds = map cEdition editions
-        in case nub eds == eds of
-            True -> Right $ (cat, editions)
-            False -> Left $ "duplicated editions in cat: " ++ show cat
-    Right $ Map.fromList p
+    in  fmap Map.fromList $ forM cats $ \cat ->
+    let editions =
+            sortBy (compare `on` cEdition) . filter ((==cat) . cCat) $ dsc
+        eds = map cEdition editions
+    in case nub eds == eds of
+        True -> Right $ (cat, editions)
+        False -> Left $ "duplicated editions in cat: " ++ show cat
 
 -- | Read xml content.
 categoryDescription :: XmlSource s => s -> Either String Category
@@ -358,12 +356,12 @@ categoryDescription src = do
 
     getAttr el aName = case X.findAttr (nameOf aName) el of
         Nothing -> Left $
-            "Attribute '"++aName++ "' not found in element " ++ (show el)
+            "Attribute '"++ aName ++ "' not found in element " ++ (show el)
         Just x -> Right $ read x
 
     getChild el aName = case X.findChild (nameOf aName) el of
         Nothing -> Left $
-            "Child '"++aName++ "' not found in element " ++ (show el)
+            "Child '"++ aName ++ "' not found in element " ++ (show el)
         Just x -> Right x
 
     readLength :: String -> Either String Length
@@ -494,11 +492,10 @@ toDataBlocks bs
 -- | Split datablock to records.
 toRecords :: Profiles -> DataBlock -> Maybe [Item]
 toRecords profiles db = do
-    let cat = dbCat db
-        d = dbData db
     category <- Map.lookup cat profiles
-    getRecords category d
+    getRecords category $ dbData db
   where
+    cat = dbCat db
     getRecords :: Category -> B.Bits -> Maybe [Item]
     getRecords category bs
         | B.null bs = Just []
@@ -619,7 +616,7 @@ sizeOf _ _ = Nothing
 -- >    return item >>= child "010" >>= child "SAC"
 --
 child :: ItemName -> Item -> Maybe Item
-child name item = childs item >>= return . lookup name >>= join
+child name item = join $ childs item >>= lookup name
 
 -- | Get deep subitem.
 --
@@ -762,24 +759,25 @@ childs item
 unChilds :: Desc -> [(ItemName,Maybe Item)] -> Maybe Item
 unChilds dsc present = case (dItemType dsc) of
     TCompound -> do
-        let items = dItems dsc
-            bs = B.pack fspecTotal
-                `mappend` (mconcat . map iBits . catMaybes . map snd $ present)
-            fspecTotal
-                | fspec == [] = []
-                | otherwise = concat leading ++ lastOctet
-            fspec = dropWhileEnd (==False) $ [isJust . snd $ f | f<-present]
-            leading = map (++[True]) (init groups)
-            lastOctet = (last groups) ++ [False]
-            groups = spl fspec
-            spl [] = []
-            spl s =
-                let (a,b) = splitAt 7 s
-                in (fill a):(spl b)
-            fill a = take 7 (a++repeat False)
         guard $ length items == length present
         return $ Item dsc bs
     _ -> Nothing
+    where
+    items = dItems dsc
+    bs = B.pack fspecTotal
+        `mappend` (mconcat . map iBits . catMaybes . map snd $ present)
+    fspecTotal
+        | fspec == [] = []
+        | otherwise = concat leading ++ lastOctet
+    fspec = dropWhileEnd (==False) $ [isJust . snd $ f | f<-present]
+    leading = map (++[True]) (init groups)
+    lastOctet = (last groups) ++ [False]
+    groups = spl fspec
+    spl [] = []
+    spl s =
+        let (a,b) = splitAt 7 s
+        in (fill a):(spl b)
+    fill a = take 7 (a++repeat False)
 
 -- | Create compound item from profile and transform function.
 -- TODO: try to replace with: MaybeT (State Item) ->
@@ -937,8 +935,7 @@ fromValues f list parentDsc = case (dItemType parentDsc) of
 
         guard $ (length names1) >= n
         guard $ (take n names1) == names2
-        l <- sequence [f val d | (val,d) <- zip values items]
-            >>= return . map iBits
+        l <- traverse (fmap iBits) [f val d | (val,d) <- zip values items]
         ch <- consume chunks l mempty
         return $ Item parentDsc (mconcat ch)
 
