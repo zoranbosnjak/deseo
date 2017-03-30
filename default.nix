@@ -5,7 +5,7 @@
 }:
 mkDerivation {
   pname = "deseo";
-  version = "1.2.0.1";
+  version = "1.3.0.0";
   src = ./.;
   libraryHaskellDepends = [
     base bytestring containers deepseq deepseq-generics megaparsec mtl

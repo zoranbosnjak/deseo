@@ -30,7 +30,7 @@ and then in the development shell
 
 Use regular cabal test command (cabal is already provided by nix)
 
-    cabal test --test-option=--color --show-details=streaming
+    cabal test --test-option=--color --show-details=always
 
 ### Generate documentation
 

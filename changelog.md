@@ -10,3 +10,7 @@
 
 * NFData instances fix
 
+# 1.3.0.0
+
+* build-depends update
+
