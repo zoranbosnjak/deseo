@@ -61,6 +61,13 @@
 -- >            "010" <! fromBits (B.fromInteger 16 0x0102)
 -- >            "020" <! fromRawInt 0x0203
 -- >            "030" <! fromValues fromRawInt [("SAC", 0x01), ("SIC", 0x02)]
+-- >            "030a" <! fromSubitems   -- the same as 030, but more flexible
+-- >                [ ("SAC", fromRawInt 0x01)  -- allow different
+-- >                , ("SIC", fromRawInt 0x02)  -- item convertors
+-- >                ]
+-- >            "040" <!! do                    -- compound item
+-- >                "A" <! fromRawInt 0x01
+-- >                "B" <! fromRawInt 0x02
 -- >
 -- >        rec <- fromValues fromRawInt [("010", 0x0102)] catXY
 --
@@ -110,6 +117,7 @@ module Data.Asterix
 
     -- * Building items
     , create, (<!), putItem, delItem, failItem
+    , createSubitem, (<!!)
 
     -- * Converters: value -> Maybe Item
     , fromBits
@@ -118,6 +126,7 @@ module Data.Asterix
     , fromRawInteger
     , fromNatural
     --, fromString
+    , fromSubitems
     , fromValues
     , fromRepetitiveValues
 
@@ -762,7 +771,7 @@ unChilds dsc present = case (dItemType dsc) of
         guard $ length items == length present
         return $ Item dsc bs
     _ -> Nothing
-    where
+  where
     items = dItems dsc
     bs = B.pack fspecTotal
         `mappend` (mconcat . map iBits . catMaybes . map snd $ present)
@@ -821,6 +830,27 @@ putItem name toItem = state $ \i -> ((),newItem i) where
                 >>= return . replace
                 >>= unChilds (iDsc parent)
         _ -> Nothing
+
+-- | Alias for 'createSubitem'
+--
+-- >
+-- >    rec <- create cat $ do
+-- >        "010" <! fromRaw 0x0102
+-- >        "020" <!! do
+-- >            "A" <! fromRaw 0x01
+-- >            "B" <! fromRaw 0x02
+--
+(<!!) :: String -> State (Maybe Item) () -> State (Maybe Item) ()
+(<!!) = createSubitem
+
+-- | Create nested compound item.
+createSubitem :: String -> State (Maybe Item) () -> State (Maybe Item) ()
+createSubitem name act = state $ \i -> ((), newItem i) where
+    newItem Nothing = Nothing
+    newItem (Just parent) = do
+        dsc <- lookup name [(dName d, d) | d <- dItems . iDsc $ parent]
+        sub <- create dsc act
+        execState (putItem name (\_ -> Just sub)) (Just parent)
 
 -- | Force computation to fail
 --
@@ -892,17 +922,17 @@ fromNatural val dsc@Desc {dLen=Length1 len} = do
     return $ Item dsc (B.fromInteger len val')
 fromNatural _ _ = Nothing
 
--- | Convert from given values, convert each, then apply
-fromValues :: (a -> Desc -> Maybe Item) -> [(ItemName, a)] -> Desc -> Maybe Item
-fromValues f list parentDsc = case (dItemType parentDsc) of
+-- | Convert from given subitems
+fromSubitems :: [(ItemName, Desc -> Maybe Item)] -> Desc -> Maybe Item
+fromSubitems lst parentDsc = case (dItemType parentDsc) of
 
     TItem -> do
         guard $ names1 == names2
-        l <- sequence [f val d | (val,d) <- zip values items]
+        l <- sequence [val d | (val,d) <- zip values items]
         return $ Item parentDsc (mconcat . map iBits $ l)
 
     TCompound -> do
-        let transform = sequence_ [putItem name (f val) | (name,val) <- list]
+        let transform = sequence_ [putItem name val | (name,val) <- lst]
         create parentDsc transform
 
     TExtended -> do
@@ -935,7 +965,7 @@ fromValues f list parentDsc = case (dItemType parentDsc) of
 
         guard $ (length names1) >= n
         guard $ (take n names1) == names2
-        l <- traverse (fmap iBits) [f val d | (val,d) <- zip values items]
+        l <- traverse (fmap iBits) [val d | (val,d) <- zip values items]
         ch <- consume chunks l mempty
         return $ Item parentDsc (mconcat ch)
 
@@ -968,7 +998,7 @@ fromValues f list parentDsc = case (dItemType parentDsc) of
 
         guard $ (length names1) >= n
         guard $ (take n names1) == names2
-        l <- sequence [f val d | (val,d) <- zip values items]
+        l <- sequence [val d | (val,d) <- zip values items]
             >>= return . map iBits
         ch <- genPrim n1 l
         return $ Item parentDsc (mconcat ch)
@@ -978,19 +1008,23 @@ fromValues f list parentDsc = case (dItemType parentDsc) of
   where
     items = dItems parentDsc
     names1 = map dName items
-    names2 = map fst list
-    values = map snd list
+    names2 = map fst lst
+    values = map snd lst
+
+-- | Convert from given values, convert each, then apply
+fromValues :: (a -> Desc -> Maybe Item) -> [(ItemName, a)] -> Desc -> Maybe Item
+fromValues f lst = fromSubitems [(name, f val) | (name, val) <- lst]
 
 -- | Convert repetitive values
 fromRepetitiveValues :: (t -> Desc -> Maybe Item) -> [t] -> Desc -> Maybe Item
-fromRepetitiveValues f list parentDsc = case (dItemType parentDsc) of
+fromRepetitiveValues f lst parentDsc = case (dItemType parentDsc) of
 
     TRepetitive -> do
-        guard $ (length list) <= 255
-        let n = B.fromInteger 8 $ fromIntegral $ length list
+        guard $ (length lst) <= 255
+        let n = B.fromInteger 8 $ fromIntegral $ length lst
             -- itemType is TRepetitive, but individual items are TItem
             dsc = parentDsc {dItemType=TItem}
-        items <- sequence [f val dsc | val <- list] >>= return . map iBits
+        items <- sequence [f val dsc | val <- lst] >>= return . map iBits
         return $ Item parentDsc $ mconcat (n:items)
 
     _ -> Nothing

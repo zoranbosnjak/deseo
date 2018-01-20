@@ -194,6 +194,26 @@ testCreate = do
 
         rec2 = fromValues fromRawInt [("010", 0x0102)] cat0''
 
+        rec3 = create cat0'' $ do
+            "060" <! fromSubitems
+                [ ("I3", fromRawInt 255)
+                ]
+
+        rec3a = create cat0'' $ do
+            "060" <!! do
+                "I3" <! fromRawInt 255
+
+        rec4 = create cat0'' $ do
+            "060" <! fromSubitems
+                [ ("I1", fromRawInt 254)
+                , ("I3", fromRawInt 255)
+                ]
+
+        rec4a = create cat0'' $ do
+            "060" <!! do
+                "I1" <! fromRawInt 254
+                "I3" <! fromRawInt 255
+
     assertEqual "created 0" True (isJust rec0)
     assertEqual "created 1a" True (isJust rec1a)
 
@@ -204,7 +224,22 @@ testCreate = do
     assertEqual "equal 1e" rec1a rec1e
     assertEqual "equal 2" rec1a rec2
 
-    assertEqual "correct" (B.fromInteger 24 0x800102) (iBits $ fromJust rec1a)
+    assertEqual "correct rec1a"
+        (B.fromInteger 24 0x800102) (iBits $ fromJust rec1a)
+
+    assertEqual "correct rec3"
+        (B.fromInteger 32 0x014020FF) (iBits $ fromJust rec3)
+
+    assertEqual "correct rec4"
+        (B.fromInteger 40 0x0140A0FEFF) (iBits $ fromJust rec4)
+
+    assertEqual "created rec3" True (isJust rec3)
+    assertEqual "equal rec3a" rec3 rec3a
+
+    assertEqual "created rec4" True (isJust rec4)
+    assertEqual "equal rec4a" rec4 rec4a
+
+    assertEqual "not equal rec3 rec4" True (rec3 /= rec4)
 
         {-
 
