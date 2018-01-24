@@ -214,6 +214,18 @@ testCreate = do
                 "I1" <! fromRawInt 254
                 "I3" <! fromRawInt 255
 
+        rec5a = create cat0'' $ do
+            putItem "010" $ fromRawInt 0x0102
+
+        rec5b = create cat0'' $ do
+            putItem "010" $ fromRawInt 0x0102
+            putItem "030" $ fromRawInt 256
+
+        rec5c = create cat0'' $ do
+            putItem "010" $ fromRawInt 0x0102
+            putItem "030" $ fromRawInt 256
+            delItem "030"
+
     assertEqual "created 0" True (isJust rec0)
     assertEqual "created 1a" True (isJust rec1a)
 
@@ -240,6 +252,9 @@ testCreate = do
     assertEqual "equal rec4a" rec4 rec4a
 
     assertEqual "not equal rec3 rec4" True (rec3 /= rec4)
+
+    assertEqual "delItem1" True (rec5a /= rec5b)
+    assertEqual "delItem2" True (rec5a == rec5c)
 
         {-
 

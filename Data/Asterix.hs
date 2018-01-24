@@ -864,7 +864,19 @@ failItem = state $ \_ -> ((), Nothing)
 
 -- | Delete subitem from compound item.
 delItem :: String -> State (Maybe Item) ()
-delItem = undefined -- TODO
+delItem name = state $ \i -> ((), newItem i) where
+    newItem Nothing = Nothing
+    newItem (Just parent) = case (dItemType . iDsc $ parent) of
+        TCompound -> do
+            let remove lst = do
+                    (a,b) <- lst
+                    return $ case a == name of
+                        True -> (a, Nothing)
+                        False -> (a, b)
+            childs parent
+                >>= return . remove
+                >>= unChilds (iDsc parent)
+        _ -> Nothing
 
 -- convert functions:
 
