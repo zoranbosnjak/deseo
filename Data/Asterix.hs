@@ -154,7 +154,7 @@ import Data.Word (Word8)
 
 import Control.DeepSeq (NFData)
 import Control.Monad (forM, guard, join)
-import Control.Monad.State (State, state, execState)
+import Control.Monad.State (State, state, execState, modify)
 import GHC.Generics (Generic)
 
 import qualified Text.XML.Light as X
@@ -814,9 +814,8 @@ create dsc transform
 -- >        putItem "040" $ fromRaw 0x0102
 --
 putItem :: String -> (Desc -> Maybe Item) -> State (Maybe Item) ()
-putItem name toItem = state $ \i -> ((),newItem i) where
-    newItem Nothing = Nothing
-    newItem (Just parent) = case (dItemType . iDsc $ parent) of
+putItem name toItem = modify (>>= newItem) where
+    newItem parent = case dItemType $ iDsc $ parent of
         TCompound -> do
             dsc <- lookup name [(dName d, d) | d <- dItems . iDsc $ parent]
             let maybeItem = toItem dsc
@@ -845,9 +844,8 @@ putItem name toItem = state $ \i -> ((),newItem i) where
 
 -- | Create nested compound item.
 createSubitem :: String -> State (Maybe Item) () -> State (Maybe Item) ()
-createSubitem name act = state $ \i -> ((), newItem i) where
-    newItem Nothing = Nothing
-    newItem (Just parent) = do
+createSubitem name act = modify (>>= newItem) where
+    newItem parent = do
         dsc <- lookup name [(dName d, d) | d <- dItems . iDsc $ parent]
         sub <- create dsc act
         execState (putItem name (\_ -> Just sub)) (Just parent)
@@ -864,19 +862,15 @@ failItem = state $ \_ -> ((), Nothing)
 
 -- | Delete subitem from compound item.
 delItem :: String -> State (Maybe Item) ()
-delItem name = state $ \i -> ((), newItem i) where
-    newItem Nothing = Nothing
-    newItem (Just parent) = case (dItemType . iDsc $ parent) of
-        TCompound -> do
-            let remove lst = do
-                    (a,b) <- lst
-                    return $ case a == name of
-                        True -> (a, Nothing)
-                        False -> (a, b)
-            childs parent
-                >>= return . remove
-                >>= unChilds (iDsc parent)
+delItem name = modify (>>= newItem) where
+    newItem parent = case dItemType $ iDsc $ parent of
+        TCompound -> childs parent
+            >>= return . fmap remove
+            >>= unChilds (iDsc parent)
         _ -> Nothing
+    remove (a, b)
+        | a == name = (a, Nothing)
+        | otherwise = (a, b)
 
 -- convert functions:
 
