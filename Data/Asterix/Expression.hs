@@ -21,10 +21,13 @@ import Control.Applicative ((<|>))
 import Control.DeepSeq (NFData)
 import Control.Monad (mzero, void)
 import GHC.Generics (Generic)
-import Text.Megaparsec (between, parseMaybe, try, spaceChar)
+import Text.Megaparsec (between, parseMaybe, try, Parsec)
+import Text.Megaparsec.Char (spaceChar)
 import Text.Megaparsec.Expr (makeExprParser, Operator(InfixL))
-import Text.Megaparsec.String (Parser)
-import qualified Text.Megaparsec.Lexer as L
+import Data.Void (Void)
+import qualified Text.Megaparsec.Char.Lexer as L
+
+type Parser = Parsec Void String
 
 data EValue
     = EInteger Integer
@@ -101,7 +104,7 @@ parened :: Parser a -> Parser a
 parened = between (symbol "(") (symbol ")")
 
 integer :: Parser Integer
-integer = L.signed sc $ hex <|> L.integer where
+integer = L.signed sc $ hex <|> L.decimal where
     hex = (try $ symbol "0x") >> L.hexadecimal
 
 double :: Parser Double
