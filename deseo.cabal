@@ -1,5 +1,5 @@
 name:                deseo
-version:             1.3.1.0
+version:             1.4.0
 synopsis:            Asterix decoder/encoder
 license:             GPL-3
 license-file:        LICENSE
@@ -60,6 +60,10 @@ test-suite test-deseo
     type:               exitcode-stdio-1.0
     hs-source-dirs:     tests
     main-is:            Main.hs
+    other-modules:
+        TestAsterix
+        , TestBitString
+        , TestExpression
     build-depends:
         base
         , containers
