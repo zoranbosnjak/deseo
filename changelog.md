@@ -14,3 +14,7 @@
 
 * build-depends update
 
+# 1.4.1
+
+* minor build fix
+

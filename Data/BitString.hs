@@ -70,7 +70,7 @@ import GHC.Generics
 import Test.QuickCheck
 
 -- | Bits data type.
-newtype Bits = Bits [Bool] deriving (Generic, Eq, Monoid, Arbitrary)
+newtype Bits = Bits [Bool] deriving (Generic, Eq, Semigroup, Monoid, Arbitrary)
 
 instance NFData Bits
 
