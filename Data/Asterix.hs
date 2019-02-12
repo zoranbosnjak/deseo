@@ -34,13 +34,13 @@
 -- >        uaps <- case categorySelect descriptions [(8, Edition 1 2)] of
 -- >            Left e -> error e
 -- >            Right val -> return val
-
+--
 --
 --      * decode bits to records
 --
 -- >        import qualified Data.BitString as B
 -- >
--- >        let datablock = B.fromInteger 48 0x000006800203
+-- >        let db = B.fromInteger 48 0x000006800203
 -- >
 -- >        profiles <- ...
 -- >        let parse db = return db
@@ -48,11 +48,37 @@
 -- >                >>= mapM (toRecords profiles)
 -- >                >>= return . join
 -- >
--- >        print $ parse datablock
+-- >        print $ parse db
 --
 --      * decode items
 --
---          TODO
+-- >        rec <- fetchRecord...
+-- >        let sac = childR ["010", "SAC"] rec >>= toRaw
+-- >            sic = childR ["010", "SIC"] rec >>= toRaw
+--
+--      * update records
+--
+-- >        -- rewrite item with constant, delete item
+-- >        rec <- fetchRecord...
+-- >        let rec' = update rec $ do
+-- >                modifyItem "010" $ \_ -> fromRawInt 0x0103
+-- >                delItem "020"
+-- >
+-- >        -- swap SAC and SIC values (method 1)
+-- >        rec <- fetchRecord...
+-- >        Just b = update rec $ do
+-- >            let Just sac = childR ["010", "SAC"] rec >>= toRaw
+-- >                Just sic = childR ["010", "SIC"] rec >>= toRaw
+-- >            modifyItemR ["010", "SAC"] $ \_ -> fromRawInt sic
+-- >            modifyItemR ["010", "SIC"] $ \_ -> fromRawInt sac
+-- >
+-- >        -- swap SAC and SIC values (method 2)
+-- >        rec <- fetchRecord...
+-- >        Just c = update rec $ do
+-- >            modifyItem "010" $ \i dsc -> do
+-- >                sac <- B.take 8 <$> toBits i
+-- >                sic <- B.take 8 . B.drop 8 <$> toBits i
+-- >                fromBits (sic <> sac) dsc
 --
 --      * building items
 --
@@ -70,9 +96,9 @@
 -- >                "B" <! fromRawInt 0x02
 -- >
 -- >        rec <- fromValues fromRawInt [("010", 0x0102)] catXY
---
+-- >
 -- >        rec <- fromRepetitiveValues (fromValues fromRawInt)
---              [ [("A", 1), ("B", 2)], [("A", 3), ("B", 4)] ]
+-- >            [ [("A", 1), ("B", 2)], [("A", 3), ("B", 4)] ]
 --
 --
 
@@ -82,7 +108,7 @@ module Data.Asterix
 (
     -- * Data types
     ItemType(..)
-    , Item(..)
+    , Item(..), emptyItem
     , Desc(..)
     , Category(..), Edition(..), Uap
 
@@ -95,7 +121,8 @@ module Data.Asterix
     -- * Datablock
     , DataBlock(..)
     , toDataBlocks
-    , datablock
+    , mkDataBlock
+    , fromDataBlock
 
     -- * XML parsers
     , categoryDescription
@@ -116,8 +143,9 @@ module Data.Asterix
     , unChilds
 
     -- * Building items
-    , create, (<!), putItem, delItem, failItem
+    , update, create, (<!), putItem, delItem, failItem, getItem
     , createSubitem, (<!!)
+    , modifyItem, modifyItemR
 
     -- * Converters: value -> Maybe Item
     , fromBits
@@ -154,7 +182,7 @@ import Data.Word (Word8)
 
 import Control.DeepSeq (NFData)
 import Control.Monad (forM, guard, join)
-import Control.Monad.State (State, state, execState, modify)
+import Control.Monad.State (State, state, execState, gets, modify)
 import GHC.Generics (Generic)
 
 import qualified Text.XML.Light as X
@@ -185,6 +213,9 @@ data Item = Item
     } deriving (Generic, Show, Eq)
 
 instance NFData Item
+
+emptyItem :: Desc -> Item
+emptyItem dsc = Item dsc mempty
 
 -- | Asterix item description
 data Desc = Desc
@@ -284,13 +315,17 @@ data DataBlock = DataBlock
 
 instance NFData DataBlock
 
---  | Create datablock
-datablock :: Cat -> [Item] -> DataBlock
-datablock cat items = DataBlock {dbCat=cat, dbData=bs} where
-    bs = c `mappend` ln `mappend` records
-    c = B.fromInteger 8 $ toInteger cat
-    ln = B.fromInteger 16 $ fromIntegral $ (B.length records `div` 8) + 3
-    records = mconcat $ map iBits items
+-- | Create datablock (from records).
+mkDataBlock :: Cat -> [Item] -> DataBlock
+mkDataBlock cat items = DataBlock {dbCat=cat, dbData=bs} where
+    bs = mconcat $ map iBits items
+
+-- | Convert datablock to bits.
+fromDataBlock :: DataBlock -> B.Bits
+fromDataBlock db = c <> ln <> bs where
+    bs = dbData db
+    c = B.fromIntegral 8 (dbCat db)
+    ln = B.fromIntegral 16 $ (B.length bs `div` 8) + 3
 
 -- | Request particular edition of a category or latest
 categorySelect :: [Category] -> [(Cat,Edition)] -> Either String Profiles
@@ -764,39 +799,75 @@ childs item
     items = dItems . iDsc $ item
     b = iBits item
 
--- recreate item from subitems
+-- | Recreate item from subitems.
 unChilds :: Desc -> [(ItemName,Maybe Item)] -> Maybe Item
 unChilds dsc present = case (dItemType dsc) of
+    TItem -> do
+        guard $ length items == length present
+        return $ Item dsc $ mconcat . map iBits . catMaybes . map snd $ present
+
+    -- TFixed ->
+
+    -- TSpare ->
+
+    TExtended -> do
+        bs <- compose mempty $ zip items present
+        return $ Item dsc bs
+      where
+        compose acc [] = case B.length acc `mod` 8 of
+            7 -> return $ acc <> B.pack [False] -- terminate record
+            _ -> Nothing
+        compose acc ((d, (name, mi)):rest) = case mi of
+            Nothing -> compose acc rest
+            Just i -> do
+                guard $ name == dName d
+                guard $ d == iDsc i
+                let acc' = case B.length acc `mod` 8 of
+                        7 -> acc <> B.pack [True] -- extend record
+                        _ -> acc
+                compose (acc' <> iBits i) rest
+
+    TRepetitive -> do
+        let n = length present
+        guard $ n < 256
+        return $ Item dsc $ (B.fromIntegral 8 n) <> bs
+      where
+        bs = mconcat . map iBits . catMaybes . map snd $ present
+
+    -- TExplicit ->
+
     TCompound -> do
         guard $ length items == length present
         return $ Item dsc bs
+      where
+        bs = B.pack fspecTotal
+            `mappend` (mconcat . map iBits . catMaybes . map snd $ present)
+        fspecTotal
+            | fspec == [] = []
+            | otherwise = concat leading ++ lastOctet
+        fspec = dropWhileEnd (==False) $ [isJust . snd $ f | f<-present]
+        leading = map (++[True]) (init groups)
+        lastOctet = (last groups) ++ [False]
+        groups = spl fspec
+        spl [] = []
+        spl s =
+            let (a,b) = splitAt 7 s
+            in (fill a):(spl b)
+        fill a = take 7 (a++repeat False)
     _ -> Nothing
   where
     items = dItems dsc
-    bs = B.pack fspecTotal
-        `mappend` (mconcat . map iBits . catMaybes . map snd $ present)
-    fspecTotal
-        | fspec == [] = []
-        | otherwise = concat leading ++ lastOctet
-    fspec = dropWhileEnd (==False) $ [isJust . snd $ f | f<-present]
-    leading = map (++[True]) (init groups)
-    lastOctet = (last groups) ++ [False]
-    groups = spl fspec
-    spl [] = []
-    spl s =
-        let (a,b) = splitAt 7 s
-        in (fill a):(spl b)
-    fill a = take 7 (a++repeat False)
+
+-- | Update item.
+update :: Item -> State (Maybe Item) () -> Maybe Item
+update i act = execState act (Just i)
 
 -- | Create compound item from profile and transform function.
--- TODO: try to replace with: MaybeT (State Item) ->
 create :: Desc -> State (Maybe Item) () -> Maybe Item
 create dsc transform
-    | itemType==TCompound = execState transform $ emptyRecord dsc
+    | dItemType dsc == TCompound = update (emptyItem dsc) transform
     | otherwise = Nothing
-  where
-    itemType = dItemType dsc
-    emptyRecord d = Just $ Item d mempty
+    -- TODO: try to replace with: MaybeT (State Item) ->
 
 -- | Alias for 'putItem'.
 --
@@ -872,6 +943,29 @@ delItem name = modify (>>= newItem) where
         | a == name = (a, Nothing)
         | otherwise = (a, b)
 
+-- | Get subitem.
+getItem :: ItemName -> State (Maybe Item) (Maybe Item)
+getItem name = gets (>>= child name)
+
+-- | Modify subitem (if exists).
+modifyItem :: ItemName -> (Item -> Desc -> Maybe Item) -> State (Maybe Item) ()
+modifyItem name f = modify (>>= newItem) where
+    newItem parent = do
+        subitems <- childs parent
+        subitem <- join $ lookup name subitems
+        let replaceItem (n,x)
+                | n == name = (n, f subitem (iDsc subitem))
+                | otherwise = (n, x)
+        unChilds (iDsc parent) (fmap replaceItem subitems)
+
+-- | Modify recursive subitem (if exists).
+modifyItemR :: [ItemName] -> (Item -> Desc -> Maybe Item) -> State (Maybe Item) ()
+modifyItemR [] _f = return ()
+modifyItemR (name:[]) f = modifyItem name f
+modifyItemR (name:names) f = do
+    item <- execState (modifyItemR names f) <$> getItem name
+    putItem name $ const item
+
 -- convert functions:
 
 _chkLimit :: Maybe t -> (a -> t -> Bool) -> a -> Maybe a
@@ -887,8 +981,8 @@ fromBits val dsc@Desc {dLen=Length1 len} = do
 fromBits val dsc = case (dItemType dsc) of
     TExplicit -> do
         let (a,b) = divMod (B.length val) 8
-            ln = fromIntegral $ a+1
-            size = B.fromInteger 8 ln
+            ln = a+1
+            size = B.fromIntegral 8 ln
         guard (b==0)
         guard (ln<=255)
         return $ Item dsc (size `mappend` val)
@@ -897,7 +991,7 @@ fromBits val dsc = case (dItemType dsc) of
 -- | Convert from raw value (item size must be known).
 fromRaw :: Integral a => a -> Desc -> Maybe Item
 fromRaw val dsc@Desc {dLen=Length1 len} =
-    Just $ Item dsc $ B.fromInteger len $ fromIntegral val
+    Just $ Item dsc $ B.fromIntegral len val
 fromRaw _ _ = Nothing
 
 fromRawInt :: Int -> Desc -> Maybe Item
@@ -925,7 +1019,7 @@ fromNatural val dsc@Desc {dLen=Length1 len} = do
         _ -> Nothing
     val' <- return val >>= _chkLimit mmin (<) >>= _chkLimit mmax (>)
         >>= return . ival . conv
-    return $ Item dsc (B.fromInteger len val')
+    return $ Item dsc (B.fromIntegral len val')
 fromNatural _ _ = Nothing
 
 -- | Convert from given subitems
@@ -1027,7 +1121,7 @@ fromRepetitiveValues f lst parentDsc = case (dItemType parentDsc) of
 
     TRepetitive -> do
         guard $ (length lst) <= 255
-        let n = B.fromInteger 8 $ fromIntegral $ length lst
+        let n = B.fromIntegral 8 $ length lst
             -- itemType is TRepetitive, but individual items are TItem
             dsc = parentDsc {dItemType=TItem}
         items <- sequence [f val dsc | val <- lst] >>= return . map iBits

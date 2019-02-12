@@ -23,7 +23,7 @@ import Control.Monad (mzero, void)
 import GHC.Generics (Generic)
 import Text.Megaparsec (between, parseMaybe, try, Parsec)
 import Text.Megaparsec.Char (spaceChar)
-import Text.Megaparsec.Expr (makeExprParser, Operator(InfixL))
+import Control.Monad.Combinators.Expr (makeExprParser, Operator(InfixL))
 import Data.Void (Void)
 import qualified Text.Megaparsec.Char.Lexer as L
 

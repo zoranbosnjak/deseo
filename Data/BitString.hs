@@ -19,7 +19,7 @@
 -- >    Bits 100.....
 -- >    >>> B.take 2 $ B.pack [True, False, False]
 -- >    Bits 10......
--- >    >>> B.fromInteger 16 0x0102
+-- >    >>> B.fromInt 16 0x0102
 -- >    Bits 00000001 00000010
 -- >    >>> B.toUIntegral $ B.pack [True, False]
 -- >    2
@@ -50,7 +50,7 @@ module Data.BitString (
     , anySet, allSet
 
     -- * Convert functions
-    , fromInteger
+    , fromIntegral, fromInteger, fromInt
     , toSIntegral, toUIntegral
     , fromByteString
     , toByteString
@@ -60,7 +60,7 @@ import Control.DeepSeq
 import Control.Monad
 import qualified Prelude as P
 import Prelude
-    hiding (length, any, fromInteger, toInteger, take, drop, null, (!!))
+    hiding (length, any, fromIntegral, fromInteger, toInteger, take, drop, null, (!!))
 import qualified Data.ByteString as S
 import Data.Word
 import qualified Data.Bits as B
@@ -132,16 +132,22 @@ zeros n = Bits $ replicate n False
 -- | Generate bitstring of given bit length and value,
 -- for example:
 --
--- >    fromInteger 16 0x1234 == Bits 00010010 00110100
+-- >    fromIntegral 16 (0x1234::Int) == Bits 00010010 00110100
 --
-fromInteger :: Int -> Integer -> Bits
-fromInteger n val = Bits $ reverse $ unfoldr f (n,val) where
+fromIntegral :: Integral a => Int -> a -> Bits
+fromIntegral n val = Bits $ reverse $ unfoldr f (n,val) where
     f (0,_) = Nothing
     f (n', val') =
         let (a,b) = val' `divMod` 2
         in Just (bitValue b, (n'-1, a))
     bitValue 0 = False
     bitValue _ = True
+
+fromInteger :: Int -> Integer -> Bits
+fromInteger = fromIntegral
+
+fromInt :: Int -> Int -> Bits
+fromInt = fromIntegral
 
 -- | If byte aligned, return Just value, else 'Nothing'.
 checkAligned :: Bits -> Maybe Bits

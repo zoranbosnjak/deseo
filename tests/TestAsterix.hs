@@ -4,7 +4,7 @@ module TestAsterix (
     testAsterix
 ) where
 
-import Control.Monad (join)
+import Control.Monad
 import qualified Data.Map as Map
 import Data.Maybe (isJust, fromJust, isNothing)
 import Data.Either (rights)
@@ -34,10 +34,12 @@ testAsterix = testGroup "Asterix"
         ],
         testGroup "records" [
             testCase "decode" splitRec
-            , testCase "childs" childs'
+            , testCase "childs" childsTest
+            , testCase "childs/unchilds" childsUnchildsTest
         ],
-        testGroup "create" [
-            testCase "create" testCreate
+        testGroup "create/update" [
+            testCase "update" testUpdate
+            , testCase "create" testCreate
             , testCase "limits" testLimits
         ],
         testGroup "convert" [
@@ -128,8 +130,8 @@ splitRec = do
         (Just [B.fromInteger 24 0x800203, B.fromInteger 24 0x800405])
         (parse d2)
 
-childs' :: Assertion
-childs' = do
+childsTest :: Assertion
+childsTest = do
     cat0 <- readFile (xmldir </> "cat000_1.2.xml")
         >>= return . categoryDescription
     let profiles = Map.fromList [(cCat c, c) | c<-(rights [cat0])]
@@ -166,6 +168,120 @@ childs' = do
     assertEqual "sec" Nothing (childR ["010", "SEC"] r >>= return . iBits)
 
     assertEqual "childs/unchilds" (Just r) (childs r >>= unChilds (iDsc r))
+
+childsUnchildsTest :: Assertion
+childsUnchildsTest = do
+    cat0 <- readFile (xmldir </> "cat000_1.2.xml")
+        >>= return . categoryDescription
+    let (Right cat0') = cat0
+        (Just cat0'') = uapByName cat0' "uap"
+
+        rec = create cat0'' $ do
+            "010" <! fromRawInt 0x0102
+            "020" <! fromRawInt 0x1234
+            "031" <! fromRawInt 1
+            "050" <! fromSubitems
+                [ ("X", fromRawInt 2)
+                , ("Y", fromRawInt 3)
+                , ("A", fromRawInt 4)
+                , ("B", fromRawInt 5)
+                , ("C", fromRawInt 6)
+                ]
+            "060" <!! do
+                "I1" <! fromRawInt 1
+                "I3" <! fromRawInt 2
+            "070" <! fromRepetitiveValues (fromValues fromRawInt)
+                [ [("A", 1), ("B", 2)]
+                , [("A", 3), ("B", 4)]
+                ]
+            "100" <! fromRawInt 9
+
+    -- for each subitem, convert to childs, then back
+    forM_ (fromJust $ childs $ fromJust rec) $ \(n, mi) -> case mi of
+        Nothing -> return ()
+        Just i -> case childs i of
+            Nothing -> return ()
+            Just j -> do
+                let rv = unChilds (iDsc i) j
+                assertEqual ("child/unchild " ++ n) mi rv
+
+testUpdate :: Assertion
+testUpdate = do
+    cat0 <- readFile (xmldir </> "cat000_1.2.xml")
+        >>= return . categoryDescription
+    let _profiles = Map.fromList [(cCat c, c) | c<-(rights [cat0])]
+        (Right cat0') = cat0
+        (Just cat0'') = uapByName cat0' "uap"
+
+        rec0 = emptyItem cat0''
+        Just rec1 = create cat0'' $ do
+            putItem "010" $ fromBits (B.fromInteger 16 0x0102)
+            putItem "020" $ fromBits (B.fromInteger 16 0xABCD)
+
+    assertEqual "update put"
+        (Just rec1)
+        (update rec0 $ do
+            putItem "010" $ fromBits (B.fromInteger 16 0x0102)
+            putItem "020" $ fromBits (B.fromInteger 16 0xABCD)
+        )
+
+    assertEqual "update del"
+        (Just rec0)
+        (update rec1 $ do
+            delItem "010"
+            delItem "020"
+        )
+
+    assertEqual "update modifyItem1a"
+        (create cat0'' $ putItem "010" $ fromBits (B.fromInteger 16 0x0103))
+        (update rec1 $ do
+            modifyItem "010" $ \_ -> fromRawInt 0x0103
+            delItem "020"
+        )
+
+    assertEqual "update modifyItem1b"
+        (update rec1 $ do
+            modifyItem "010" $ \_ -> fromRawInt 0x0103
+            delItem "020"
+        )
+        (update rec1 $ do
+            modifyItemR ["010"] $ \_ -> fromRawInt 0x0103
+            delItem "020"
+        )
+
+    assertEqual "update modifyItem2"
+        Nothing
+        (update rec0 $ modifyItem "010" $ \_ -> fromRawInt 0x0103)
+
+    assertEqual "update modifyItemR1"
+        (create cat0'' $ putItem "010" $ fromBits (B.fromInteger 16 0x0103))
+        (update rec1 $ do
+            modifyItemR ["010", "SIC"] $ \_ -> fromRawInt 0x03
+            delItem "020"
+        )
+
+    assertEqual "update modifyItemR2"
+        Nothing
+        (update rec0 $ modifyItemR ["010", "SIC"] $ \_ -> fromRawInt 0x03)
+
+    do
+        let Just a = create cat0'' $ do
+                putItem "010" $ fromBits (B.fromInteger 16 0x0201)  -- swap SAC/SIC
+                putItem "020" $ fromBits (B.fromInteger 16 0xABCD)
+            -- method1
+            Just b = update rec1 $ do
+                let Just sac = childR ["010", "SAC"] rec1 >>= toRaw
+                    Just sic = childR ["010", "SIC"] rec1 >>= toRaw
+                modifyItemR ["010", "SAC"] $ \_ -> fromRawInt sic
+                modifyItemR ["010", "SIC"] $ \_ -> fromRawInt sac
+            -- method2
+            Just c = update rec1 $ do
+                modifyItem "010" $ \i dsc -> do
+                    sac <- B.take 8 <$> toBits i
+                    sic <- B.take 8 . B.drop 8 <$> toBits i
+                    fromBits (sic <> sac) dsc
+        assertEqual "swap sac-sic 1" a b
+        assertEqual "swap sac-sic 2" a c
 
 testCreate :: Assertion
 testCreate = do
