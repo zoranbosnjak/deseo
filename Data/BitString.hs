@@ -15,15 +15,30 @@
 --
 -- Examples:
 --
--- >    >>> B.pack [True, False, False]
+-- >    > b = pack [True, False, False]
+-- >    > b
 -- >    Bits 100.....
--- >    >>> B.take 2 $ B.pack [True, False, False]
+-- >    > take 2 b
 -- >    Bits 10......
--- >    >>> B.fromInt 16 0x0102
+--
+-- >    > fromInt 16 0x0102
 -- >    Bits 00000001 00000010
--- >    >>> B.toUIntegral $ B.pack [True, False]
+--
+-- >    > toUIntegral $ pack [True, False]
 -- >    2
 --
+-- >    > b1 = pack [True]
+-- >    > b2 = pack [True, False]
+-- >    > b1 == b2
+-- >    False
+-- >    > toByteString b1 == toByteString b2
+-- >    True
+-- >    > toByteString (makeAligned b1) == toByteString (makeAligned b2)
+-- >    False
+-- >    > makeAligned b1
+-- >    Bits 00000001
+-- >    > makeAligned b2
+-- >    Bits 00000010
 
 {-# LANGUAGE DeriveGeneric #-}
 {-# LANGUAGE GeneralizedNewtypeDeriving #-}
@@ -46,6 +61,7 @@ module Data.BitString (
     , unpack
     , null
     , checkAligned
+    , makeAligned
     , complement
     , anySet, allSet
 
@@ -57,7 +73,6 @@ module Data.BitString (
 ) where
 
 import Control.DeepSeq
-import Control.Monad
 import qualified Prelude as P
 import Prelude
     hiding (length, any, fromIntegral, fromInteger, toInteger, take, drop, null, (!!))
@@ -155,6 +170,11 @@ checkAligned b = case (length b `mod` 8) of
     0 -> Just b
     _ -> Nothing
 
+-- | Prepend with zeros such that a value is 8-bit aligned.
+makeAligned :: Bits -> Bits
+makeAligned (Bits a) = Bits (replicate n False <> a) where
+    n = (8 - (P.length a `mod` 8)) `mod` 8
+
 -- False=0, True=1
 boolVal :: Num a => Bool -> a
 boolVal False = 0
@@ -169,9 +189,8 @@ toSIntegral b
 
 -- | Convert bits to unsigned number.
 toUIntegral :: Num a => Bits -> a
-toUIntegral (Bits b) = sum . zipWith (*) factors . map boolVal . reverse $ b
-  where
-    factors = map (2^) ([0..]::[Int])
+toUIntegral (Bits b) = foldr f 0 (fmap boolVal $ reverse b) where
+    f x a = a*2 + x
 
 -- | Convert bytestring to Bits.
 fromByteString :: S.ByteString -> Bits
@@ -179,16 +198,15 @@ fromByteString = Bits . concatMap octet . S.unpack where
     octet w = map (B.testBit w) [7,6..0]
 
 -- | Convert Bits to bytestring.
-toByteString :: Bits -> Maybe S.ByteString
-toByteString bs = do
-    (Bits s) <- checkAligned bs
-    return . S.pack . map toWord . break8 $ s where
-        break8 :: [a] -> [[a]]
-        break8 [] = []
-        break8 s = a : break8 b where (a,b) = splitAt 8 s
-        toWord :: [Bool] -> Word8
-        toWord s = sum $
-            zipWith (*) (map (2^) ([7,6..0]::[Int])) (map boolVal s)
+toByteString :: Bits -> S.ByteString
+toByteString = S.pack . map toWord . break8 . unpack
+  where
+    break8 :: [a] -> [[a]]
+    break8 [] = []
+    break8 s = a : break8 b where (a,b) = splitAt 8 s
+    toWord :: [Bool] -> Word8
+    toWord s = sum $
+        zipWith (*) (map (2^) ([7,6..0]::[Int])) (map boolVal s)
 
 -- | Reverse all the bits.
 complement :: Bits -> Bits
@@ -201,3 +219,4 @@ anySet = P.any id . unpack
 -- | Are all bits set?
 allSet :: Bits -> Bool
 allSet = P.all id . unpack
+

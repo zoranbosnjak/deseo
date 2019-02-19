@@ -2,7 +2,6 @@ module TestBitString (
     testBitString
 ) where
 
-import Data.Maybe (fromJust)
 import Data.Word (Word8)
 import qualified Data.ByteString as S
 import Test.Framework (Test, testGroup)
@@ -84,7 +83,7 @@ integral' = do
 
 bytestring' :: [Word8] -> Bool
 bytestring' s =
-    (fromJust . B.toByteString . B.fromByteString . S.pack $ s)
+    (B.toByteString . B.fromByteString . S.pack $ s)
     == (S.pack s)
 
 combine :: B.Bits -> B.Bits -> Bool
