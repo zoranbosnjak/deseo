@@ -55,6 +55,7 @@ testAsterix = testGroup "Asterix"
             testCase "extended" testExtended
             , testCase "extended variant" testExtendedVariant
             , testCase "repetitive" testRepetitive
+            , testCase "string" testString
         ]
     ]
 
@@ -666,4 +667,22 @@ testRepetitive = do
     assertEqual "070 childs"
         [("0", [("A", 1), ("B", 2)]), ("1", [("A", 3), ("B", 4)])]
         result
+
+testString :: Assertion
+testString = do
+    cat0 <- readFile (xmldir </> "cat000_1.2.xml")
+        >>= return . categoryDescription
+    let _profiles = Map.fromList [(cCat c, c) | c<-(rights [cat0])]
+        (Right cat0') = cat0
+        (Just cat0'') = uapByName cat0' "uap"
+
+        rec0 = create cat0'' $ "080" <! fromString ""
+        rec1 = create cat0'' $ "080" <! fromString "1"
+        rec7 = create cat0'' $ "080" <! fromString "1234567"
+        rec8 = create cat0'' $ "080" <! fromString "12345678"
+
+    assertEqual "rec0" Nothing rec0
+    assertEqual "rec1" Nothing rec1
+    assertEqual "rec7" (Just "1234567") (rec7 >>= child "080" >>= toString)
+    assertEqual "rec8" Nothing rec8
 

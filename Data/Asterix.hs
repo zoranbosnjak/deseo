@@ -94,6 +94,7 @@
 -- >            "040" <!! do                    -- compound item
 -- >                "A" <! fromRawInt 0x01
 -- >                "B" <! fromRawInt 0x02
+-- >            "050" <! fromString "STRING"
 -- >
 -- >        rec <- fromValues fromRawInt [("010", 0x0102)] catXY
 -- >
@@ -153,7 +154,7 @@ module Data.Asterix
     , fromRawInt
     , fromRawInteger
     , fromNatural
-    --, fromString
+    , fromString
     , fromSubitems
     , fromValues
     , fromRepetitiveValues
@@ -162,7 +163,7 @@ module Data.Asterix
     , toBits
     , toRaw
     , toNatural
-    --, toString
+    , toString
 
     -- * Util functions
     , sizeOf
@@ -179,6 +180,7 @@ import Data.Maybe (fromMaybe, isJust, catMaybes)
 import Data.List (dropWhileEnd, nub, sortBy)
 import qualified Data.Map as Map
 import Data.Word (Word8)
+import qualified Data.ByteString.Char8 as BS8
 
 import Control.DeepSeq (NFData)
 import Control.Monad (forM, guard, join)
@@ -1022,6 +1024,13 @@ fromNatural val dsc@Desc {dLen=Length1 len} = do
     return $ Item dsc (B.fromIntegral len val')
 fromNatural _ _ = Nothing
 
+-- | Convert from ascii string.
+fromString :: String -> Desc -> Maybe Item
+fromString s dsc@Desc {dLen=Length1 len} = do
+    guard $ len == (8 * length s)
+    return $ Item dsc (B.fromByteString $ BS8.pack s)
+fromString _ _ = Nothing
+
 -- | Convert from given subitems
 fromSubitems :: [(ItemName, Desc -> Maybe Item)] -> Desc -> Maybe Item
 fromSubitems lst parentDsc = case (dItemType parentDsc) of
@@ -1152,4 +1161,8 @@ toNatural item = do
         _ -> Nothing
 
     return val >>= _chkLimit mmin (<) >>= _chkLimit mmax (>)
+
+-- | Get item as ascii string.
+toString :: Item -> Maybe String
+toString item = B.checkAligned (iBits item) >>= return . BS8.unpack . B.toByteString
 
