@@ -99,7 +99,7 @@
 -- >        rec <- fromValues fromRawInt [("010", 0x0102)] catXY
 -- >
 -- >        rec <- fromRepetitiveValues (fromValues fromRawInt)
--- >            [ [("A", 1), ("B", 2)], [("A", 3), ("B", 4)] ]
+-- >            [ [("A", 1), ("B", 2)], [("A", 3), ("B", 4)] ] catXY
 --
 --
 
