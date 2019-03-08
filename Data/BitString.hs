@@ -24,8 +24,11 @@
 -- >    > fromInt 16 0x0102
 -- >    Bits 00000001 00000010
 --
--- >    > toUIntegral $ pack [True, False]
+-- >    > toUnsigned $ pack [True, False]
 -- >    2
+--
+-- >    > toSigned $ pack [True, False]
+-- >    -2
 --
 -- >    > b1 = pack [True]
 -- >    > b2 = pack [True, False]
@@ -67,7 +70,7 @@ module Data.BitString (
 
     -- * Convert functions
     , fromIntegral, fromInteger, fromInt
-    , toSIntegral, toUIntegral
+    , toSigned, toUnsigned
     , fromByteString
     , toByteString
 ) where
@@ -181,15 +184,15 @@ boolVal False = 0
 boolVal True = 1
 
 -- | Convert bits to signed number.
-toSIntegral :: Num a => Bits -> a
-toSIntegral b
+toSigned :: Num a => Bits -> a
+toSigned b
     | null b = 0
-    | (head . unpack $ b) == False = toUIntegral b
-    | otherwise = -((toUIntegral $ complement b)+1)
+    | (head . unpack $ b) == False = toUnsigned b
+    | otherwise = -((toUnsigned $ complement b)+1)
 
 -- | Convert bits to unsigned number.
-toUIntegral :: Num a => Bits -> a
-toUIntegral (Bits b) = foldr f 0 (fmap boolVal $ reverse b) where
+toUnsigned :: Num a => Bits -> a
+toUnsigned (Bits b) = foldr f 0 (fmap boolVal $ reverse b) where
     f x a = a*2 + x
 
 -- | Convert bytestring to Bits.

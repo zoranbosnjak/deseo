@@ -663,7 +663,7 @@ testRepetitive = do
 
     let result = [(a,decode b) | (a,b) <- c1]
         decode = map decItem . fromJust . childs . fromJust
-        decItem (name, i) = (name, B.toUIntegral . iBits $ fromJust i :: Int)
+        decItem (name, i) = (name, B.toUnsigned . iBits $ fromJust i :: Int)
     assertEqual "070 childs"
         [("0", [("A", 1), ("B", 2)]), ("1", [("A", 3), ("B", 4)])]
         result

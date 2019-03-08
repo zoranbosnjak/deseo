@@ -526,9 +526,9 @@ toDataBlocks bs
     | B.null bs = Just []
     | otherwise = do
         x <- B.checkAligned bs
-        cat <- return x >>= B.takeMaybe 8 >>= return . B.toUIntegral
+        cat <- return x >>= B.takeMaybe 8 >>= return . B.toUnsigned
         len <- return x >>= B.dropMaybe 8 >>= B.takeMaybe 16
-            >>= return . B.toUIntegral
+            >>= return . B.toUnsigned
         y <- return x >>= B.takeMaybe (len*8) >>= B.dropMaybe 24
 
         let db = DataBlock cat y
@@ -620,7 +620,7 @@ sizeOf Desc {dItemType=TExtendedVariant, dLen=Length2 n1 n2} b = do
 -- size of Repetitive
 sizeOf d@Desc {dItemType=TRepetitive} b = do
     s8 <- checkSize 8 b
-    let rep = B.toUIntegral . B.take s8 $ b
+    let rep = B.toUnsigned . B.take s8 $ b
         b' = B.drop s8 b
     getSubitems rep b' 8
   where
@@ -633,7 +633,7 @@ sizeOf d@Desc {dItemType=TRepetitive} b = do
 -- size of Explicit
 sizeOf Desc {dItemType=TExplicit} b = do
     s8 <- checkSize 8 b
-    let val = B.toUIntegral . B.take s8 $ b
+    let val = B.toUnsigned . B.take s8 $ b
     case val of
         0 -> Nothing
         _ -> checkSize (8*val) b
@@ -755,7 +755,7 @@ childs item
         n <- checkSize 8 b
         let dsc = iDsc item
             subDsc = dsc {dItemType = TItem}
-            rep = B.toUIntegral . B.take n $ b
+            rep = B.toUnsigned . B.take n $ b
             dataBits = B.drop n b
 
             consume _ 0 _ = Just []
@@ -1144,14 +1144,14 @@ toBits = Just . iBits
 
 -- | Get raw value.
 toRaw :: Integral a => Item -> Maybe a
-toRaw = Just . B.toUIntegral . iBits
+toRaw = Just . B.toUnsigned . iBits
 
 -- | Get item's natural value.
 toNatural :: Item -> Maybe EValue
 toNatural item = do
     let b = iBits item
-        uval = B.toUIntegral b
-        sval = B.toSIntegral b
+        uval = B.toUnsigned b
+        sval = B.toSigned b
 
     (val,mmin,mmax) <- case (dValue . iDsc $ item) of
         VDecimal lsb _ mmin mmax -> Just (lsb*sval, mmin, mmax)
