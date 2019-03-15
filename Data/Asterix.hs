@@ -62,7 +62,7 @@
 -- >        rec <- fetchRecord...
 -- >        let rec' = update rec $ do
 -- >                modifyItem "010" $ \_ -> fromRawInt 0x0103
--- >                delItem "020"
+-- >                delSubitem "020"
 -- >
 -- >        -- swap SAC and SIC values (method 1)
 -- >        rec <- fetchRecord...
@@ -141,10 +141,10 @@ module Data.Asterix
     , child
     , childR
     , childs
-    , unChilds
+    , recreateItem
 
     -- * Building items
-    , update, create, (<!), putItem, delItem, failItem, getItem
+    , update, create, (<!), putItem, delSubitem, failItem, getSubitem
     , createSubitem, (<!!)
     , modifyItem, modifyItemR
 
@@ -176,6 +176,7 @@ module Data.Asterix
 ) where
 
 import Data.Function (on)
+import Data.Bool (bool)
 import Data.Maybe (fromMaybe, isJust, catMaybes)
 import Data.List (dropWhileEnd, nub, sortBy)
 import qualified Data.Map as Map
@@ -193,20 +194,7 @@ import Text.XML.Light.Lexer (XmlSource)
 import qualified Data.BitString as B
 import Data.Asterix.Expression (EValue(EInteger, EDouble), eval)
 
--- | Asterix item types
-data ItemType
-    = TItem
-    | TFixed
-    | TSpare
-    | TExtended
-    | TExtendedVariant
-    | TRepetitive
-    | TExplicit
-    | TCompound
-    | TRfs
-    deriving (Show, Read, Eq, Generic)
-
-instance NFData ItemType
+type ErrMsg = String
 
 -- | description + data
 data Item = Item
@@ -242,10 +230,25 @@ noDesc = Desc
     { dName = ""
     , dItemType = TItem
     , dDsc = ""
-    , dLen = Length0
+    , dLen = LengthUnspecified
     , dItems = []
     , dValue = VRaw
     }
+
+-- | Asterix item types
+data ItemType
+    = TItem
+    | TFixed
+    | TSpare
+    | TExtended
+    | TExtendedVariant
+    | TRepetitive
+    | TExplicit
+    | TCompound
+    | TRfs
+    deriving (Show, Read, Eq, Generic)
+
+instance NFData ItemType
 
 type Cat = Word8
 type Uap = (UapName,Desc)
@@ -289,7 +292,10 @@ instance Read Edition where
         b = tail . dropWhile (/='.') $ value
 
 -- | Length of asterix item
-data Length = Length0 | Length1 Int | Length2 Int Int
+data Length
+    = LengthUnspecified
+    | LengthFixed Int
+    | LengthExtended Int Int
     deriving (Show, Read, Eq, Generic)
 
 instance NFData Length
@@ -299,6 +305,7 @@ type Unit = String
 type Min = EValue
 type Max = EValue
 
+-- | Possible interpretations of item content.
 data Value
     = VRaw
     | VString
@@ -330,7 +337,7 @@ fromDataBlock db = c <> ln <> bs where
     ln = B.fromIntegral 16 $ (B.length bs `div` 8) + 3
 
 -- | Request particular edition of a category or latest
-categorySelect :: [Category] -> [(Cat,Edition)] -> Either String Profiles
+categorySelect :: [Category] -> [(Cat,Edition)] -> Either ErrMsg Profiles
 categorySelect dsc requested = do
     dsc' <- categorySelectAll dsc
     fmap Map.fromList $ forM (Map.toList dsc') $ \(cat,editions) -> do
@@ -342,7 +349,7 @@ categorySelect dsc requested = do
                 Just val -> Right (cat, val)
 
 -- | Group descriptions by category and sort by edition
-categorySelectAll :: [Category] -> Either String (Map.Map Cat [Category])
+categorySelectAll :: [Category] -> Either ErrMsg (Map.Map Cat [Category])
 categorySelectAll dsc =
     let cats = nub . map cCat $ dsc
     in  fmap Map.fromList $ forM cats $ \cat ->
@@ -354,9 +361,8 @@ categorySelectAll dsc =
         False -> Left $ "duplicated editions in cat: " ++ show cat
 
 -- | Read xml content.
-categoryDescription :: XmlSource s => s -> Either String Category
+categoryDescription :: XmlSource s => s -> Either ErrMsg Category
 categoryDescription src = do
-    -- TODO break into smaller pieces
     let elements = X.onlyElems . X.parseXML $ src
         filteredElements =
             filter (\e -> (X.qName . X.elName $ e) == "category") $ elements
@@ -388,7 +394,7 @@ categoryDescription src = do
                     { dName = ""
                     , dItemType = TCompound
                     , dDsc = "Category " ++ (show cat)
-                    , dLen = Length0
+                    , dLen = LengthUnspecified
                     , dItems = uapItems
                     , dValue = VRaw
                     }
@@ -410,11 +416,11 @@ categoryDescription src = do
             "Child '"++ aName ++ "' not found in element " ++ (show el)
         Just x -> Right x
 
-    readLength :: String -> Either String Length
+    readLength :: String -> Either ErrMsg Length
     readLength s
-        | s == "" = Right Length0
-        | isJust (maybeRead s :: Maybe Size) = Right $ Length1 . read $ s
-        | isJust (maybeRead s :: Maybe (Size,Size)) = Right $ Length2 a b
+        | s == "" = Right LengthUnspecified
+        | isJust (maybeRead s :: Maybe Size) = Right $ LengthFixed . read $ s
+        | isJust (maybeRead s :: Maybe (Size,Size)) = Right $ LengthExtended a b
         | otherwise = Left $ "Unable to read length: " ++ s
       where
         (a,b) = read s
@@ -423,33 +429,33 @@ categoryDescription src = do
             _         -> Nothing
 
     recalculateLen :: Desc -> Length
-    recalculateLen dsc = fromMaybe Length0 (total dsc >>= Just . Length1)
+    recalculateLen dsc = fromMaybe LengthUnspecified (total dsc >>= Just . LengthFixed)
       where
         total :: Desc -> Maybe Size
-        total Desc {dLen=Length1 a} = Just a
-        total Desc {dLen=Length2 _ _} = Nothing
+        total Desc {dLen=LengthFixed a} = Just a
+        total Desc {dLen=LengthExtended _ _} = Nothing
         total Desc {dItems=[]} = Just 0
         total dsc'@Desc {dItems=(i:is)} = do
             x <- total i
             rest <- total (dsc' {dItems=is})
             Just (x + rest)
 
-    readItem :: X.Element -> Either String Desc
+    readItem :: X.Element -> Either ErrMsg Desc
     readItem el = dsc' el >>= f where
 
         -- check description, recalculate length
-        f :: Desc -> Either String Desc
-        f dsc@Desc {dItemType=TItem, dLen=Length0} = Right $
+        f :: Desc -> Either ErrMsg Desc
+        f dsc@Desc {dItemType=TItem, dLen=LengthUnspecified} = Right $
             dsc {dLen=recalculateLen dsc}
-        f dsc@Desc {dItemType=TFixed, dLen=Length1 _, dItems=[]} = Right dsc
-        f dsc@Desc {dItemType=TSpare, dLen=Length1 _, dItems=[]} = Right dsc
-        f dsc@Desc {dItemType=TExtended, dLen=Length2 _ _} = Right dsc
-        f dsc@Desc {dItemType=TExtendedVariant, dLen=Length2 _ _} = Right dsc
-        f dsc@Desc {dItemType=TRepetitive, dLen=Length0, dItems=(_:_)} = Right $
+        f dsc@Desc {dItemType=TFixed, dLen=LengthFixed _, dItems=[]} = Right dsc
+        f dsc@Desc {dItemType=TSpare, dLen=LengthFixed _, dItems=[]} = Right dsc
+        f dsc@Desc {dItemType=TExtended, dLen=LengthExtended _ _} = Right dsc
+        f dsc@Desc {dItemType=TExtendedVariant, dLen=LengthExtended _ _} = Right dsc
+        f dsc@Desc {dItemType=TRepetitive, dLen=LengthUnspecified, dItems=(_:_)} = Right $
             dsc {dLen=recalculateLen dsc}
-        f dsc@Desc {dItemType=TExplicit, dLen=Length0, dItems=[]} = Right dsc
-        f dsc@Desc {dItemType=TCompound, dLen=Length0, dItems=(_:_)} = Right dsc
-        f dsc@Desc {dItemType=TRfs, dLen=Length0, dItems=[]} = Right dsc
+        f dsc@Desc {dItemType=TExplicit, dLen=LengthUnspecified, dItems=[]} = Right dsc
+        f dsc@Desc {dItemType=TCompound, dLen=LengthUnspecified, dItems=(_:_)} = Right dsc
+        f dsc@Desc {dItemType=TRfs, dLen=LengthUnspecified, dItems=[]} = Right dsc
         f x = Left $ "error in description: " ++ (dName x)
 
         -- get all elements
@@ -476,7 +482,7 @@ categoryDescription src = do
                 , dValue = val
                 }
 
-        getValueTip :: X.Element -> Either String Value
+        getValueTip :: X.Element -> Either ErrMsg Value
         getValueTip el' = case getChild el' "convert" of
             Left _ -> Right VRaw
             Right conv -> do
@@ -517,7 +523,7 @@ uapByName c name = lookup name (cUaps c)
 -- | get UAP by data
 uapByData :: Category -> B.Bits -> Maybe Desc
 uapByData c _
-    | cCat c == 1   = undefined -- TODO, cat1 is special
+    | cCat c == 1   = undefined -- TODO, cat1 is special case
     | otherwise     = uapByName c "uap"
 
 -- | Split bits to datablocks
@@ -525,7 +531,7 @@ toDataBlocks :: B.Bits -> Maybe [DataBlock]
 toDataBlocks bs
     | B.null bs = Just []
     | otherwise = do
-        x <- B.checkAligned bs
+        x <- bool Nothing (Just bs) $ B.isAligned bs
         cat <- return x >>= B.takeMaybe 8 >>= return . B.toUnsigned
         len <- return x >>= B.dropMaybe 8 >>= B.takeMaybe 16
             >>= return . B.toUnsigned
@@ -555,21 +561,15 @@ toRecords profiles db = do
 -- | Get fspec bits, (without fs, with fx)
 getFspec :: B.Bits -> Maybe ([Bool],[Bool])
 getFspec b = do
-    n <- checkSize 8 b
-    let val = B.unpack . B.take n $ b
+    guard $ B.length b >= 8
+    let val = B.unpack . B.take 8 $ b
     if (last val == False)
         then Just ((init val), val)
         else do
-            (remin, remTotal) <- getFspec (B.drop n b)
+            (remin, remTotal) <- getFspec (B.drop 8 b)
             let rv = (init val) ++ remin
                 rvTotal = val ++ remTotal
             Just (rv, rvTotal)
-
--- | Check that requested number of bits are available.
-checkSize :: Int -> B.Bits -> Maybe Int
-checkSize n b
-    | B.length b < n = Nothing
-    | otherwise = Just n
 
 -- | Grab bits: bits -> (bits for item, remaining bits)
 grab :: Desc -> B.Bits -> Maybe (B.Bits, B.Bits)
@@ -577,51 +577,60 @@ grab dsc b = do
     size <- sizeOf dsc b
     Just (B.take size b, B.drop size b)
 
--- | Calculate items size.
+-- | Calculate items size, if input data is valid.
 sizeOf :: Desc -> B.Bits -> Maybe Size
 
 -- size of Item
-sizeOf Desc {dItemType=TItem, dLen=Length1 n} b = checkSize n b
+sizeOf Desc {dItemType=TItem, dLen=LengthFixed n} b = do
+    guard $ B.length b >= n
+    return n
+
 sizeOf Desc {dItemType=TItem, dItems=[]} _ = Just 0
+
 sizeOf d@Desc {dItemType=TItem, dItems=(i:is)} b = do
     size <- sizeOf i b
     rest <- sizeOf (d {dItems=is}) (B.drop size b)
     Just (size+rest)
 
 -- size of Fixed
-sizeOf Desc {dItemType=TFixed, dLen=Length1 n} b = checkSize n b
+sizeOf Desc {dItemType=TFixed, dLen=LengthFixed n} b = do
+    guard $ B.length b >= n
+    return n
 
 -- size of Spare
-sizeOf Desc {dItemType=TSpare, dLen=Length1 n} b = do
-    size <- checkSize n b
-    guard $ B.take size b == B.zeros size
-    return size
+sizeOf Desc {dItemType=TSpare, dLen=LengthFixed n} b = do
+    content <- B.takeMaybe n b
+    guard $ content == B.zeros n
+    return n
 
 -- size of Extended
-sizeOf Desc {dItemType=TExtended, dLen=Length2 n1 n2} b = do
-    size <- checkSize n1 b
-    if (B.index b (size-1))
-        then dig size
-        else Just size
+sizeOf Desc {dItemType=TExtended, dLen=LengthExtended n1 n2} b = do
+    guard $ B.length b >= n1
+    if (B.index b (n1-1))
+        then dig n1
+        else Just n1
   where
     dig offset = do
-        size <- checkSize offset b
-        if (B.index b (size-1))
-            then dig (size+n2)
-            else Just size
+        guard $ B.length b >= offset
+        if (B.index b (offset-1))
+            then dig (offset+n2)
+            else Just offset
 
 -- size of ExtendedVariant (primary + maximum one extension)
-sizeOf Desc {dItemType=TExtendedVariant, dLen=Length2 n1 n2} b = do
-    size <- checkSize n1 b
-    case (B.index b (size-1)) of
-        False -> Just size
-        True -> checkSize (n1+n2) b
+sizeOf Desc {dItemType=TExtendedVariant, dLen=LengthExtended n1 n2} b = do
+    guard $ B.length b >= n1
+    case (B.index b (n1-1)) of
+        False -> Just n1
+        True -> do
+            let n = n1+n2
+            guard $ B.length b >= n
+            return n
 
 -- size of Repetitive
 sizeOf d@Desc {dItemType=TRepetitive} b = do
-    s8 <- checkSize 8 b
-    let rep = B.toUnsigned . B.take s8 $ b
-        b' = B.drop s8 b
+    guard $ B.length b >= 8
+    let rep = B.toUnsigned . B.take 8 $ b
+        b' = B.drop 8 b
     getSubitems rep b' 8
   where
     getSubitems :: Int -> B.Bits -> Size -> Maybe Size
@@ -632,15 +641,18 @@ sizeOf d@Desc {dItemType=TRepetitive} b = do
 
 -- size of Explicit
 sizeOf Desc {dItemType=TExplicit} b = do
-    s8 <- checkSize 8 b
-    let val = B.toUnsigned . B.take s8 $ b
+    guard $ B.length b >= 8
+    let val = B.toUnsigned . B.take 8 $ b
     case val of
         0 -> Nothing
-        _ -> checkSize (8*val) b
+        _ -> do
+            let n = 8*val
+            guard $ B.length b >= n
+            return n
 
 -- size of Compound
 sizeOf Desc {dItemType=TCompound, dItems=items} b' = do
-    b <- B.checkAligned b'
+    b <- bool Nothing (Just b') $ B.isAligned b'
     let (fspec, fspecTotal) = fromMaybe ([],[]) (getFspec b)
         subitems = [(dName dsc,dsc) | (f,dsc) <- zip fspec items, (f==True)]
         offset = length fspecTotal
@@ -654,7 +666,10 @@ sizeOf Desc {dItemType=TCompound, dItems=items} b' = do
         itemSize <- sizeOf (snd x) b
         dig xs (B.drop itemSize b) (itemSize+size)
 
--- size of unknown
+-- size of TRfs is currently not supported
+sizeOf Desc {dItemType=TRfs} _ = Nothing
+
+-- size calculation of other item types or attributes is not valid
 sizeOf _ _ = Nothing
 
 -- | Get subitem.
@@ -688,7 +703,7 @@ childs item
     -- Extended
     | itemType == TExtended = do
         let dsc = iDsc item
-            Length2 n1 n2 = dLen dsc
+            LengthExtended n1 n2 = dLen dsc
             chunks = [n1] ++ repeat n2
 
             -- if no more items, there must be also end of a chunk
@@ -723,7 +738,7 @@ childs item
     -- ExtendedVariant
     | itemType == TExtendedVariant = do
         let dsc = iDsc item
-            Length2 n1 n2 = dLen dsc
+            LengthExtended n1 n2 = dLen dsc
 
             consumePrim _ [] _ = Just []
             consumePrim n (i:is) b'
@@ -752,11 +767,11 @@ childs item
 
     -- Repetitive
     | itemType == TRepetitive = do
-        n <- checkSize 8 b
+        guard $ B.length b >= 8
         let dsc = iDsc item
             subDsc = dsc {dItemType = TItem}
-            rep = B.toUnsigned . B.take n $ b
-            dataBits = B.drop n b
+            rep = B.toUnsigned . B.take 8 $ b
+            dataBits = B.drop 8 b
 
             consume _ 0 _ = Just []
             consume ix remainingN remainingBits = do
@@ -802,8 +817,8 @@ childs item
     b = iBits item
 
 -- | Recreate item from subitems.
-unChilds :: Desc -> [(ItemName,Maybe Item)] -> Maybe Item
-unChilds dsc present = case (dItemType dsc) of
+recreateItem :: Desc -> [(ItemName,Maybe Item)] -> Maybe Item
+recreateItem dsc present = case (dItemType dsc) of
     TItem -> do
         guard $ length items == length present
         return $ Item dsc $ mconcat . map iBits . catMaybes . map snd $ present
@@ -869,7 +884,6 @@ create :: Desc -> State (Maybe Item) () -> Maybe Item
 create dsc transform
     | dItemType dsc == TCompound = update (emptyItem dsc) transform
     | otherwise = Nothing
-    -- TODO: try to replace with: MaybeT (State Item) ->
 
 -- | Alias for 'putItem'.
 --
@@ -900,7 +914,7 @@ putItem name toItem = modify (>>= newItem) where
             guard $ isJust maybeItem
             childs parent
                 >>= return . replace
-                >>= unChilds (iDsc parent)
+                >>= recreateItem (iDsc parent)
         _ -> Nothing
 
 -- | Alias for 'createSubitem'
@@ -934,20 +948,20 @@ failItem :: State (Maybe Item) ()
 failItem = state $ \_ -> ((), Nothing)
 
 -- | Delete subitem from compound item.
-delItem :: String -> State (Maybe Item) ()
-delItem name = modify (>>= newItem) where
+delSubitem :: String -> State (Maybe Item) ()
+delSubitem name = modify (>>= newItem) where
     newItem parent = case dItemType $ iDsc $ parent of
         TCompound -> childs parent
             >>= return . fmap remove
-            >>= unChilds (iDsc parent)
+            >>= recreateItem (iDsc parent)
         _ -> Nothing
     remove (a, b)
         | a == name = (a, Nothing)
         | otherwise = (a, b)
 
 -- | Get subitem.
-getItem :: ItemName -> State (Maybe Item) (Maybe Item)
-getItem name = gets (>>= child name)
+getSubitem :: ItemName -> State (Maybe Item) (Maybe Item)
+getSubitem name = gets (>>= child name)
 
 -- | Modify subitem (if exists).
 modifyItem :: ItemName -> (Item -> Desc -> Maybe Item) -> State (Maybe Item) ()
@@ -958,14 +972,14 @@ modifyItem name f = modify (>>= newItem) where
         let replaceItem (n,x)
                 | n == name = (n, f subitem (iDsc subitem))
                 | otherwise = (n, x)
-        unChilds (iDsc parent) (fmap replaceItem subitems)
+        recreateItem (iDsc parent) (fmap replaceItem subitems)
 
 -- | Modify recursive subitem (if exists).
 modifyItemR :: [ItemName] -> (Item -> Desc -> Maybe Item) -> State (Maybe Item) ()
 modifyItemR [] _f = return ()
 modifyItemR (name:[]) f = modifyItem name f
 modifyItemR (name:names) f = do
-    item <- execState (modifyItemR names f) <$> getItem name
+    item <- execState (modifyItemR names f) <$> getSubitem name
     putItem name $ const item
 
 -- convert functions:
@@ -977,7 +991,7 @@ _chkLimit (Just limit) cmp val
     | otherwise = Just val
 
 fromBits :: B.Bits -> Desc -> Maybe Item
-fromBits val dsc@Desc {dLen=Length1 len} = do
+fromBits val dsc@Desc {dLen=LengthFixed len} = do
     guard (B.length val==len)
     return $ Item dsc val
 fromBits val dsc = case (dItemType dsc) of
@@ -992,7 +1006,7 @@ fromBits val dsc = case (dItemType dsc) of
 
 -- | Convert from raw value (item size must be known).
 fromRaw :: Integral a => a -> Desc -> Maybe Item
-fromRaw val dsc@Desc {dLen=Length1 len} =
+fromRaw val dsc@Desc {dLen=LengthFixed len} =
     Just $ Item dsc $ B.fromIntegral len val
 fromRaw _ _ = Nothing
 
@@ -1004,7 +1018,7 @@ fromRawInteger = fromRaw
 
 -- | Convert from natural value.
 fromNatural :: EValue -> Desc -> Maybe Item
-fromNatural val dsc@Desc {dLen=Length1 len} = do
+fromNatural val dsc@Desc {dLen=LengthFixed len} = do
     let ival (EInteger x) = x
         ival (EDouble x) = truncate x
     (conv,mmin,mmax) <- case dValue dsc of
@@ -1026,7 +1040,7 @@ fromNatural _ _ = Nothing
 
 -- | Convert from ascii string.
 fromString :: String -> Desc -> Maybe Item
-fromString s dsc@Desc {dLen=Length1 len} = do
+fromString s dsc@Desc {dLen=LengthFixed len} = do
     guard $ len == (8 * length s)
     return $ Item dsc (B.fromByteString $ BS8.pack s)
 fromString _ _ = Nothing
@@ -1046,7 +1060,7 @@ fromSubitems lst parentDsc = case (dItemType parentDsc) of
 
     TExtended -> do
         let n = length names2
-            Length2 n1 n2 = dLen parentDsc
+            LengthExtended n1 n2 = dLen parentDsc
             chunks = [n1] ++ repeat n2
             fx0 = B.pack [False]
             fx1 = B.pack [True]
@@ -1080,7 +1094,7 @@ fromSubitems lst parentDsc = case (dItemType parentDsc) of
 
     TExtendedVariant -> do
         let n = length names2
-            Length2 n1 n2 = dLen parentDsc
+            LengthExtended n1 n2 = dLen parentDsc
             fx0 = B.pack [False]
             fx1 = B.pack [True]
 
@@ -1164,5 +1178,9 @@ toNatural item = do
 
 -- | Get item as ascii string.
 toString :: Item -> Maybe String
-toString item = B.checkAligned (iBits item) >>= return . BS8.unpack . B.toByteString
+toString item
+    | B.isAligned b = Just $ BS8.unpack $ B.toByteString b
+    | otherwise = Nothing
+  where
+    b = iBits item
 

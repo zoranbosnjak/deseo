@@ -35,7 +35,7 @@ testAsterix = testGroup "Asterix"
         testGroup "records" [
             testCase "decode" splitRec
             , testCase "childs" childsTest
-            , testCase "childs/unchilds" childsUnchildsTest
+            , testCase "childs/recreateItem" splitRecreateTest
         ],
         testGroup "create/update" [
             testCase "update" testUpdate
@@ -168,10 +168,10 @@ childsTest = do
         (childR ["010", "SIC"] r >>= return . iBits)
     assertEqual "sec" Nothing (childR ["010", "SEC"] r >>= return . iBits)
 
-    assertEqual "childs/unchilds" (Just r) (childs r >>= unChilds (iDsc r))
+    assertEqual "childs/recreateItem" (Just r) (childs r >>= recreateItem (iDsc r))
 
-childsUnchildsTest :: Assertion
-childsUnchildsTest = do
+splitRecreateTest :: Assertion
+splitRecreateTest = do
     cat0 <- readFile (xmldir </> "cat000_1.2.xml")
         >>= return . categoryDescription
     let (Right cat0') = cat0
@@ -203,7 +203,7 @@ childsUnchildsTest = do
         Just i -> case childs i of
             Nothing -> return ()
             Just j -> do
-                let rv = unChilds (iDsc i) j
+                let rv = recreateItem (iDsc i) j
                 assertEqual ("child/unchild " ++ n) mi rv
 
 testUpdate :: Assertion
@@ -229,25 +229,25 @@ testUpdate = do
     assertEqual "update del"
         (Just rec0)
         (update rec1 $ do
-            delItem "010"
-            delItem "020"
+            delSubitem "010"
+            delSubitem "020"
         )
 
     assertEqual "update modifyItem1a"
         (create cat0'' $ putItem "010" $ fromBits (B.fromInteger 16 0x0103))
         (update rec1 $ do
             modifyItem "010" $ \_ -> fromRawInt 0x0103
-            delItem "020"
+            delSubitem "020"
         )
 
     assertEqual "update modifyItem1b"
         (update rec1 $ do
             modifyItem "010" $ \_ -> fromRawInt 0x0103
-            delItem "020"
+            delSubitem "020"
         )
         (update rec1 $ do
             modifyItemR ["010"] $ \_ -> fromRawInt 0x0103
-            delItem "020"
+            delSubitem "020"
         )
 
     assertEqual "update modifyItem2"
@@ -258,7 +258,7 @@ testUpdate = do
         (create cat0'' $ putItem "010" $ fromBits (B.fromInteger 16 0x0103))
         (update rec1 $ do
             modifyItemR ["010", "SIC"] $ \_ -> fromRawInt 0x03
-            delItem "020"
+            delSubitem "020"
         )
 
     assertEqual "update modifyItemR2"
@@ -341,7 +341,7 @@ testCreate = do
         rec5c = create cat0'' $ do
             putItem "010" $ fromRawInt 0x0102
             putItem "030" $ fromRawInt 256
-            delItem "030"
+            delSubitem "030"
 
     assertEqual "created 0" True (isJust rec0)
     assertEqual "created 1a" True (isJust rec1a)

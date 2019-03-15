@@ -81,16 +81,12 @@ instance Ord EValue where
 
 
 data Expr
-  = EValue EValue
+  = EConst EValue
   | EPow Integer Integer
-  | EBinary BinOp Expr Expr
-  deriving (Show)
-
-data BinOp
-  = Add
-  | Subtract
-  | Multiply
-  | Divide
+  | EAdd Expr Expr
+  | ESubtract Expr Expr
+  | EMultiply Expr Expr
+  | EDivide Expr Expr
   deriving (Show)
 
 -- sc stands for "space consumer" as per Megaparsec convention
@@ -124,14 +120,14 @@ pow = do
 
 binOp :: Parser Expr
 binOp = makeExprParser term
-  [ [ InfixL (EBinary Multiply <$ symbol "*")
-    , InfixL (EBinary Divide   <$ symbol "/") ]
-  , [ InfixL (EBinary Add      <$ symbol "+")
-    , InfixL (EBinary Subtract <$ symbol "-") ]
+  [ [ InfixL (EMultiply <$ symbol "*")
+    , InfixL (EDivide   <$ symbol "/") ]
+  , [ InfixL (EAdd      <$ symbol "+")
+    , InfixL (ESubtract <$ symbol "-") ]
   ]
 
 term :: Parser Expr
-term = parened expr <|> pow <|> (EValue <$> evalue)
+term = parened expr <|> pow <|> (EConst <$> evalue)
 
 expr :: Parser Expr
 expr = binOp <|> term
@@ -159,13 +155,12 @@ eval :: String -> Maybe EValue
 eval s = compute <$> parseMaybe expr s
 
 compute :: Expr -> EValue
-compute (EValue e) = e
+compute (EConst e) = e
 compute (EPow m e) = if (e>=0)
                      then EInteger $ m^e
                      else EDouble $ 1.0 / (fromInteger (m^(-e)))
-compute (EBinary op a b) =
-    let f = case op of Add -> (+)
-                       Subtract -> (-)
-                       Multiply -> (*)
-                       Divide -> (/)
-    in  f (compute a) (compute b)
+compute (EAdd a b) = compute a + compute b
+compute (ESubtract a b) = compute a - compute b
+compute (EMultiply a b) = compute a * compute b
+compute (EDivide a b) = compute a / compute b
+

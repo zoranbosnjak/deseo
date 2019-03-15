@@ -63,7 +63,7 @@ module Data.BitString (
     , zeros
     , unpack
     , null
-    , checkAligned
+    , isAligned
     , makeAligned
     , complement
     , anySet, allSet
@@ -167,11 +167,9 @@ fromInteger = fromIntegral
 fromInt :: Int -> Int -> Bits
 fromInt = fromIntegral
 
--- | If byte aligned, return Just value, else 'Nothing'.
-checkAligned :: Bits -> Maybe Bits
-checkAligned b = case (length b `mod` 8) of
-    0 -> Just b
-    _ -> Nothing
+-- | Check if bitstring is byte aligned.
+isAligned :: Bits -> Bool
+isAligned b = (length b `mod` 8) == 0
 
 -- | Prepend with zeros such that a value is 8-bit aligned.
 makeAligned :: Bits -> Bits
