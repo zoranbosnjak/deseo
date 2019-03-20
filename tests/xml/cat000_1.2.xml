@@ -103,6 +103,8 @@
             </items>
         </item>
 
+        <item name="080" type="Fixed"><len>56</len><convert><type>string</type></convert></item>
+
         <item name="100" type="Fixed">
             <len>16</len>
         </item>
@@ -121,6 +123,7 @@
             <item>051</item>
             <item>060</item>
             <item>070</item>
+            <item>080</item>
             <item></item>
             <item>100</item>
         </uap>

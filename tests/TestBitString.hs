@@ -2,7 +2,6 @@ module TestBitString (
     testBitString
 ) where
 
-import Data.Maybe (fromJust)
 import Data.Word (Word8)
 import qualified Data.ByteString as S
 import Test.Framework (Test, testGroup)
@@ -71,20 +70,20 @@ integral' :: Assertion
 integral' = do
     let eqi :: String -> Integer -> Integer -> IO ()
         eqi s a b = assertEqual s a b
-    eqi "to integral" 1 (B.toSIntegral . B.pack $ [False,True])
-    eqi "to uintegral" 1 (B.toUIntegral . B.pack $ [False,True])
-    eqi "to integral" (-2) (B.toSIntegral . B.pack $ [True,False])
-    eqi "to uintegral" 2 (B.toUIntegral . B.pack $ [True,False])
-    eqi "to integral" (-1) (B.toSIntegral . B.pack $ [True,True])
-    eqi "to uintegral" 3 (B.toUIntegral . B.pack $ [True,True])
-    eqi "to integral" 2 (B.toSIntegral . B.pack $ [False,True,False])
-    eqi "to uintegral" 2 (B.toUIntegral . B.pack $ [False,True,False])
-    eqi "to integral" 0 (B.toSIntegral . B.pack $ [False,False,False])
-    eqi "to uintegral" 0 (B.toUIntegral . B.pack $ [False,False,False])
+    eqi "to integral" 1 (B.toSigned . B.pack $ [False,True])
+    eqi "to uintegral" 1 (B.toUnsigned . B.pack $ [False,True])
+    eqi "to integral" (-2) (B.toSigned . B.pack $ [True,False])
+    eqi "to uintegral" 2 (B.toUnsigned . B.pack $ [True,False])
+    eqi "to integral" (-1) (B.toSigned . B.pack $ [True,True])
+    eqi "to uintegral" 3 (B.toUnsigned . B.pack $ [True,True])
+    eqi "to integral" 2 (B.toSigned . B.pack $ [False,True,False])
+    eqi "to uintegral" 2 (B.toUnsigned . B.pack $ [False,True,False])
+    eqi "to integral" 0 (B.toSigned . B.pack $ [False,False,False])
+    eqi "to uintegral" 0 (B.toUnsigned . B.pack $ [False,False,False])
 
 bytestring' :: [Word8] -> Bool
 bytestring' s =
-    (fromJust . B.toByteString . B.fromByteString . S.pack $ s)
+    (B.toByteString . B.fromByteString . S.pack $ s)
     == (S.pack s)
 
 combine :: B.Bits -> B.Bits -> Bool
@@ -97,7 +96,7 @@ combine a b =
 
 zeros' :: Property
 zeros' = forAll (choose (0,100)) $ \n ->
-            (B.toSIntegral . B.zeros $ n) == (0 :: Integer)
+            (B.toSigned . B.zeros $ n) == (0 :: Integer)
 
 takeDropMaybe :: Assertion
 takeDropMaybe = do
