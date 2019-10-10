@@ -30,7 +30,9 @@ and then in the development shell
 
 Use regular cabal test command (cabal is already provided by nix)
 
-    cabal test --test-option=--color --show-details=always
+    cabal test --test-option=--color
+    cabal test --test-option=--color --test-show-details=always
+    cabal test --test-option=--color --test-show-details=always --test-option=--maximum-generated-tests=10000 --test-option=--maximum-unsuitable-generated-tests=10000000
 
 ### Generate documentation
 

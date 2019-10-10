@@ -7,7 +7,7 @@ import qualified Data.ByteString as S
 import Test.Framework (Test, testGroup)
 import Test.Framework.Providers.HUnit (testCase)
 import Test.Framework.Providers.QuickCheck2 (testProperty)
-import Test.QuickCheck (Property, choose, forAll)
+import Test.QuickCheck
 import Test.HUnit (Assertion, assertEqual)
 
 import qualified Data.BitString as B
@@ -17,6 +17,7 @@ testBitString = testGroup "BitString"
     [
         testGroup "create" [
                 testCase "bits" bits
+                , testProperty "shrink" shrink'
             ]
         , testGroup "pack" [
                 testProperty "pack1" pack1
@@ -26,13 +27,16 @@ testBitString = testGroup "BitString"
                 testProperty "length" length'
                 , testProperty "take" take'
                 , testProperty "drop" drop'
+                , testProperty "complement" complement'
+                , testProperty "testBit" testBit'
                 , testProperty "zeros" zeros'
                 , testCase "maybe" takeDropMaybe
-                , testCase "any" testAny
+                , testProperty "anyAll" testAnyAll
         ]
         , testGroup "convert" [
                 testCase "integral" integral'
                 , testProperty "bytestring" bytestring'
+                , testProperty "word8" word8'
         ]
         , testGroup "other" [
                 testProperty "combine" combine
@@ -50,6 +54,9 @@ bits = do
     eq n a s = assertEqual ((show n) ++ "," ++ (show a)) s (B.unpack $
         B.fromInteger n a)
 
+shrink' :: B.Bits -> Bool
+shrink' b = B.shrinkBits b == b
+
 pack1 :: [Bool] -> Bool
 pack1 s = ((B.unpack . B.pack $ s) == s)
          && (B.pack s) == (B.pack . B.unpack . B.pack $ s)
@@ -60,11 +67,32 @@ pack2 b = (B.pack . B.unpack $ b) == b
 length' :: B.Bits -> Bool
 length' b = (B.length b) == (length . B.unpack $ b)
 
-take' :: Int -> B.Bits -> Bool
-take' n b = (B.take n b) == (B.pack . take n . B.unpack $ b)
+take' :: NonNegative Int -> B.Bits -> Bool
+take' (NonNegative n) b
+    | B.null b = discard
+    | otherwise = (B.take n b) == (B.pack . take n . B.unpack $ b)
 
-drop' :: Int -> B.Bits -> Bool
-drop' n b = (B.drop n b) == (B.pack . drop n . B.unpack $ b)
+drop' :: NonNegative Int -> B.Bits -> Bool
+drop' (NonNegative n) b
+    | B.null b = discard
+    | otherwise = (B.drop n b) == (B.pack . drop n . B.unpack $ b)
+
+complement' :: B.Bits -> Bool
+complement' b = check1 && check2 where
+    check1 = B.complement (B.complement b) == b
+    check2 = case B.null b of
+        True -> True
+        False -> B.complement b /= b
+
+testBit' :: B.Bits -> NonNegative Int -> Bool
+testBit' b (NonNegative n)
+    | B.null b = discard
+    | otherwise =
+        let b1 = B.testBit b m
+            b2 = (B.unpack b) !! m
+        in b1 == b2
+  where
+    m = n `mod` (B.length b)
 
 integral' :: Assertion
 integral' = do
@@ -85,6 +113,9 @@ bytestring' :: [Word8] -> Bool
 bytestring' s =
     (B.toByteString . B.fromByteString . S.pack $ s)
     == (S.pack s)
+
+word8' :: Word8 -> Bool
+word8' x = B.packWord8 (B.unpackWord8 x) == x
 
 combine :: B.Bits -> B.Bits -> Bool
 combine a b =
@@ -110,19 +141,9 @@ takeDropMaybe = do
     assertEqual "drop2" (Just $ B.pack []) (B.dropMaybe 2 b)
     assertEqual "drop3" Nothing (B.dropMaybe 3 b)
 
-testAny :: Assertion
-testAny = do
-    assertEqual "all" True (B.allSet $ B.pack [])
-    assertEqual "all" True (B.allSet $ B.pack [True])
-    assertEqual "all" True (B.allSet $ B.pack [True,True])
-    assertEqual "all" False (B.allSet $ B.pack [True,False])
-    assertEqual "all" False (B.allSet $ B.pack [False,True])
-    assertEqual "all" False (B.allSet $ B.pack [False,False])
-
-    assertEqual "any" False (B.anySet $ B.pack [])
-    assertEqual "any" True (B.anySet $ B.pack [True])
-    assertEqual "any" True (B.anySet $ B.pack [True,True])
-    assertEqual "any" True (B.anySet $ B.pack [True,False])
-    assertEqual "any" True (B.anySet $ B.pack [False,True])
-    assertEqual "any" False (B.anySet $ B.pack [False,False])
+testAnyAll :: B.Bits -> Bool
+testAnyAll b = check1 && check2
+  where
+    check1 = B.allSet b == and (B.unpack b)
+    check2 = B.anySet b == or (B.unpack b)
 

@@ -39,6 +39,8 @@ library
         QuickCheck
         , base < 5
         , bytestring
+        , base16-bytestring
+        , base64-bytestring
         , deepseq
         , deepseq-generics
         , megaparsec
@@ -72,6 +74,8 @@ test-suite test-deseo
         , HUnit
         , QuickCheck
         , bytestring
+        , base16-bytestring
+        , base64-bytestring
         , filepath
         , test-framework
         , test-framework-hunit

@@ -558,7 +558,7 @@ toRecords profiles db = do
             rest <- getRecords category (B.drop size bs)
             Just $ (Item {iDsc=dsc, iBits=rec}):rest
 
--- | Get fspec bits, (without fs, with fx)
+-- | Get fspec bits, (without fx, with fx)
 getFspec :: B.Bits -> Maybe ([Bool],[Bool])
 getFspec b = do
     guard $ B.length b >= 8
@@ -606,20 +606,20 @@ sizeOf Desc {dItemType=TSpare, dLen=LengthFixed n} b = do
 -- size of Extended
 sizeOf Desc {dItemType=TExtended, dLen=LengthExtended n1 n2} b = do
     guard $ B.length b >= n1
-    if (B.index b (n1-1))
+    if (B.testBit b (n1-1))
         then dig n1
         else Just n1
   where
     dig offset = do
         guard $ B.length b >= offset
-        if (B.index b (offset-1))
+        if (B.testBit b (offset-1))
             then dig (offset+n2)
             else Just offset
 
 -- size of ExtendedVariant (primary + maximum one extension)
 sizeOf Desc {dItemType=TExtendedVariant, dLen=LengthExtended n1 n2} b = do
     guard $ B.length b >= n1
-    case (B.index b (n1-1)) of
+    case (B.testBit b (n1-1)) of
         False -> Just n1
         True -> do
             let n = n1+n2
