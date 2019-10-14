@@ -6,7 +6,7 @@
 }:
 mkDerivation {
   pname = "deseo";
-  version = "1.5.0";
+  version = "1.6.0";
   src = ./.;
   libraryHaskellDepends = [
     base base16-bytestring base64-bytestring bytestring containers
