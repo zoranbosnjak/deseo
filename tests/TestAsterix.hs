@@ -56,6 +56,9 @@ testAsterix = testGroup "Asterix"
             , testCase "extended variant" testExtendedVariant
             , testCase "repetitive" testRepetitive
             , testCase "string" testString
+        ],
+        testGroup "uap" [
+            testCase "uap" testUap
         ]
     ]
 
@@ -685,4 +688,20 @@ testString = do
     assertEqual "rec1" Nothing rec1
     assertEqual "rec7" (Just "1234567") (rec7 >>= child "080" >>= toString)
     assertEqual "rec8" Nothing rec8
+
+testUap :: Assertion
+testUap = do
+    Right cat1 <- categoryDescription <$> readFile (xmldir </> "cat001_1.2.xml")
+
+    let rec_plot  = B.fromInteger 32 0xC0010200
+        rec_track = B.fromInteger 32 0xC0010280
+
+        uap_plot  = uapByName cat1 "plot"
+        uap_track = uapByName cat1 "track"
+
+    when (uap_plot == uap_track) $ do
+        assertFailure "uaps should be different"
+
+    assertEqual "plot"  uap_plot  (uapByData cat1 rec_plot)
+    assertEqual "track" uap_track (uapByData cat1 rec_track)
 
