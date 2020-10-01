@@ -522,8 +522,20 @@ uapByName c name = lookup name (cUaps c)
 
 -- | get UAP by data
 uapByData :: Category -> B.Bits -> Maybe Desc
-uapByData c _
-    | cCat c == 1   = undefined -- TODO, cat1 is special case
+uapByData c b
+    -- Cat001 is special case.
+    -- The first bit in item '020' determines 'uap type'.
+    -- We assume (optional) item '010', followed by item '020'.
+    | cCat c == 1 = do
+        (_, fspec) <- getFspec b
+        let isPresent_010 = fspec !! 0
+            isPresent_020 = fspec !! 1
+        guard isPresent_020
+        let ix = length fspec + (bool 0 16 isPresent_010)
+        guard (B.length b > ix)
+        case B.testBit b ix of
+            False -> uapByName c "plot"
+            True  -> uapByName c "track"
     | otherwise     = uapByName c "uap"
 
 -- | Split bits to datablocks
