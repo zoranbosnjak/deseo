@@ -1113,11 +1113,9 @@ fromSubitems lst parentDsc = case (dItemType parentDsc) of
             genPrim 1 [] = Just [fx0]
             genPrim n' bss@(b:bs)
                 | n'<1 = Nothing
-                | n'==1 = case bss of
-                    [] -> Just [fx0]
-                    _ -> do
-                        sec <- genSec n2 bss
-                        Just $ fx1:sec
+                | n'==1 = do
+                    sec <- genSec n2 bss
+                    Just $ fx1:sec
                 | otherwise = do
                     rest <- genPrim (n' - B.length b) bs
                     Just $ b:rest

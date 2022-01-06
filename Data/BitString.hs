@@ -76,6 +76,7 @@ module Data.BitString (
     , toSigned, toUnsigned
     , fromByteString
     , toByteString
+    , toMaybeByteString
 ) where
 
 import Control.DeepSeq
@@ -352,6 +353,12 @@ toByteString = BS.pack . map packWord8 . break8 . unpack
     break8 :: [a] -> [[a]]
     break8 [] = []
     break8 s = a : break8 b where (a,b) = splitAt 8 s
+
+-- | Helper function to convert from bits to bytesring.
+toMaybeByteString :: Bits -> Maybe BS.ByteString
+toMaybeByteString x = do
+    guard $ isAligned x
+    return $ toByteString x
 
 -- | Is any bit set?
 anySet :: Bits -> Bool
